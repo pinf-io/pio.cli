@@ -18,5 +18,10 @@
   },
   "scripts": {
     "test": "node_modules/.bin/mocha --reporter list pio-cli.test.js"
+  },
+  "config": {
+      "pio.deploy.converter": {
+          "name": "nodejs-lib"
+      }
   }
 }

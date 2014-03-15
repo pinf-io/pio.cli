@@ -50,19 +50,23 @@ if (require.main === module) {
                 .option("-f, --force", "Force an operation when it would normally be skipped");
 
             var acted = false;
-        /*
+
             program
                 .command("list [filter]")
                 .description("List services")
                 .action(function(path) {
                     acted = true;
-                    return pio().list().then(function(list) {
-                        list.forEach(function(service) {
-                            console.log(service.alias);
+                    return ensure(program, null).then(function() {
+                        return pio.list().then(function(list) {
+                            list.forEach(function(service) {
+                                console.log(service);
+                            });
                         });
-                    }).fail(error);
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
                 });
-        */
+
             program
                 .command("deploy [service selector]")
                 .description("Deploy a service")
@@ -76,12 +80,12 @@ if (require.main === module) {
                 });
 
             program
-                .command("test <service selector>")
-                .description("Test a service")
+                .command("info [service selector]")
+                .description("Config and runtime info")
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
-                        return pio.test();
+                        return pio.info();
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
@@ -100,12 +104,24 @@ if (require.main === module) {
                 });
 
             program
-                .command("info [service selector]")
-                .description("Config and runtime info")
+                .command("test <service selector>")
+                .description("Test a service")
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
-                        return pio.info();
+                        return pio.test();
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("publish [service selector]")
+                .description("Publish a service")
+                .action(function(selector) {
+                    acted = true;
+                    return ensure(program, selector).then(function() {
+                        return pio.publish();
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
