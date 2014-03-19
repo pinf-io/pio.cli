@@ -151,6 +151,15 @@ if (require.main === module) {
                     });
                 });
 
+            program
+                .command("uuid")
+                .description("Generate a new v4 UUID")
+                .action(function() {
+                    acted = true;
+                    console.log(pio.API.UUID.v4());
+                    return callback(null);
+                });
+
             program.parse(process.argv);
 
             if (!acted) {
