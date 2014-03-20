@@ -85,7 +85,10 @@ if (require.main === module) {
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
-                        return pio.info();
+                        return pio.info().then(function(info) {
+                            console.log(JSON.stringify(info, null, 4));
+                            return;
+                        });
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
@@ -97,19 +100,25 @@ if (require.main === module) {
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
-                        return pio.status();
+                        return pio.status().then(function(status) {
+                            console.log(JSON.stringify(status, null, 4));
+                            return;
+                        });
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
                 });
 
             program
-                .command("test <service selector>")
+                .command("test [service selector]")
                 .description("Test a service")
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
-                        return pio.test();
+                        return pio.test().then(function(status) {
+                            console.log(JSON.stringify(status, null, 4));
+                            return;
+                        });
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
@@ -152,7 +161,7 @@ if (require.main === module) {
                 });
 
             program
-                .command("uuid")
+                .command("gen-uuid")
                 .description("Generate a new v4 UUID")
                 .action(function() {
                     acted = true;
