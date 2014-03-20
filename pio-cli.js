@@ -6,12 +6,135 @@ const COLORS = require("colors");
 const Q = require("q");
 const PIO = require("pio");
 const EXEC = require("child_process").exec;
+const REQUEST = require("request");
 
 
 COLORS.setTheme({
     error: 'red'
 });
 
+
+
+function ensureUpstream(pio) {
+
+    var upstreamBasePath = PATH.join(pio._configPath, "../.upstream");
+
+    function ensureCatalog(alias, info) {
+        var catalogBasePath = PATH.join(upstreamBasePath, alias);
+
+        function ensureCatalogDescriptor(verify) {
+            var catalogDescriptorPath = PATH.join(catalogBasePath, "pio.catalog.json");
+            return Q.denodeify(function(callback) {
+                return FS.exists(catalogDescriptorPath, function(exists) {
+                    if (exists) {
+                        return FS.readJson(catalogDescriptorPath, callback);
+                    }
+                    if (verify) {
+                        return callback(new Error("No catalog descriptor found at '" + catalogDescriptorPath + "' after download!"));
+                    }
+                    console.log(("Download catalog for alias '" + alias + "' from '" + info.url + "'").magenta);
+                    return REQUEST({
+                        method: "GET",
+                        url: info.url,
+                        headers: {
+                            "x-auth-code": info.key
+                        }
+                    }, function(err, response, body) {
+                        if (err) return callback(err);
+                        try {
+                            JSON.parse(body);
+                        } catch(err) {
+                            console.error("Error parsing catalog JSON!");
+                            return callback(err);
+                        }
+                        return FS.outputFile(catalogDescriptorPath, body, function(err) {
+                            if (err) return callback(err);
+                            return ensureCatalogDescriptor(true).then(function(catalog) {
+                                return callback(null, catalog);
+                            }).fail(callback);
+                        });
+                    });
+                });
+            })();
+        }
+
+        function ensureArchive(archivePath, url) {
+            return Q.denodeify(function(callback) {
+                return FS.exists(archivePath, function(exists) {
+                    if (exists) return callback(null);
+                    if (!FS.existsSync(PATH.dirname(archivePath))) {
+                        FS.mkdirsSync(PATH.dirname(archivePath));
+                    }
+                    try {
+                        console.log(("Downloading package archive from '" + url + "'").magenta);
+                        REQUEST(url, function(err) {
+                            if (err) return callback(err);
+                            console.log(("Downloaded package archive from '" + url + "'").green);
+                            return callback(null);
+                        }).pipe(FS.createWriteStream(archivePath))
+                    } catch(err) {
+                        return callback(err);
+                    }
+                });
+            })();
+        }
+
+        function ensureExtracted(packagePath, archivePath) {
+            return Q.denodeify(function(callback) {
+                return FS.exists(packagePath, function(exists) {
+                    if (exists) return callback(null);
+                    console.log(("Extract '" + archivePath + "' to '" + packagePath + "'").magenta);
+                    if (!FS.existsSync(packagePath)) {
+                        FS.mkdirsSync(packagePath);
+                    }
+                    return EXEC('tar -xzf "' + PATH.basename(archivePath) + '" --strip 1 -C "' + packagePath + '/"', {
+                        cwd: PATH.dirname(archivePath)
+                    }, function(err, stdout, stderr) {
+                        if (err) return callback(err);
+                        console.log(("Archive '" + archivePath + "' extracted to '" + packagePath + "'").green);
+                        return callback(null);
+                    });
+                });
+            })();
+        }
+
+        // TODO: Use `smi` to install these packages.
+        return ensureCatalogDescriptor().then(function(catalogDescriptor) {
+            var all = [];
+            for (var packageId in catalogDescriptor.packages) {
+                if (catalogDescriptor.packages[packageId].archives) {
+                    for (var type in catalogDescriptor.packages[packageId].archives) {
+                        (function (packageId, type) {
+                            var packageIdParts = packageId.split("--");
+                            all.push(
+                                ensureArchive(
+                                    PATH.join(catalogBasePath, packageIdParts[0], packageIdParts[1], type + ".tgz"),
+                                    catalogDescriptor.packages[packageId].archives[type]
+                                ).then(function() {
+                                    return ensureExtracted(
+                                        PATH.join(catalogBasePath, packageIdParts[0], packageIdParts[1], type),
+                                        PATH.join(catalogBasePath, packageIdParts[0], packageIdParts[1], type + ".tgz")
+                                    );
+                                })
+                            );
+                        })(packageId, type);
+                    }
+                }
+            }
+            return Q.all(all);
+        });
+    }
+
+    var done = Q.resolve();
+    if (pio._config.upstream) {
+        Object.keys(pio._config.upstream).forEach(function(alias) {
+            done = Q.when(done, function() {
+                return ensureCatalog(alias, pio._config.upstream[alias]);
+            });
+        });
+    }
+    return done;
+}
 
 
 if (require.main === module) {
@@ -36,7 +159,9 @@ if (require.main === module) {
                 options.force = program.force;
             }
             return pio.ready().then(function() {
-                return pio.ensure(serviceSelector, options);
+                return ensureUpstream(pio).then(function() {
+                    return pio.ensure(serviceSelector, options);
+                });
             });
         }
 
