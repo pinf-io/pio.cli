@@ -5,6 +5,7 @@ const COMMANDER = require("commander");
 const COLORS = require("colors");
 const Q = require("q");
 const PIO = require("pio");
+const EXEC = require("child_process").exec;
 
 
 COLORS.setTheme({
@@ -95,7 +96,7 @@ if (require.main === module) {
                 });
 
             program
-                .command("status <service selector>")
+                .command("status [service selector]")
                 .description("Get the status of a service")
                 .action(function(selector) {
                     acted = true;
