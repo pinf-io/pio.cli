@@ -2,6 +2,7 @@
   "name": "pio.cli",
   "version": "0.3.0",
   "description": "CLI client for PINF.io service",
+  "pm": "npm",
   "main": "pio-cli.js",
   "bin": {
     "pio": "pio.sh"
@@ -9,6 +10,7 @@
   "dependencies": {
     "commander": "~2.1.0",
     "colors": "~0.6.2",
+    "waitfor": "~0.1.3",
     "fs-extra": "~0.8.1",
     "request": "~2.34.0",
     "q": "~1.0.0",

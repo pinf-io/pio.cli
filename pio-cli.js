@@ -6,11 +6,117 @@ const COLORS = require("colors");
 const Q = require("q");
 const PIO = require("pio");
 const EXEC = require("child_process").exec;
+const WAITFOR = require("waitfor");
+const SPAWN = require("child_process").spawn;
 
 
 COLORS.setTheme({
     error: 'red'
 });
+
+
+function install(pio) {
+
+    function loadPackageDescriptor(serviceBasePath) {
+        function loadDescriptor(path, callback) {
+            return FS.readJson(path, function(err, descriptor) {
+                if (err) return callback(err);
+                descriptor._path = path;
+                return callback(null, descriptor);
+            });
+        }
+        return Q.denodeify(function(callback) {
+            var packageDescriptorPath = PATH.join(serviceBasePath, "package.json");
+            return FS.exists(packageDescriptorPath, function(exists) {
+                if (exists) {
+                    return loadDescriptor(packageDescriptorPath, callback);
+                }
+                packageDescriptorPath = PATH.join(serviceBasePath, "source/package.json");
+                return FS.exists(packageDescriptorPath, function(exists) {
+                    if (exists) {
+                        return loadDescriptor(packageDescriptorPath, callback);
+                    }
+                    return callback(null, null);                    
+                });
+            });
+        })();
+    }
+
+    function install(descriptor, services) {
+        return Q.denodeify(function(callback) {
+            var sourcePath = PATH.dirname(descriptor._path);
+            if (descriptor.dependencies) {
+                for (var name in descriptor.dependencies) {
+                    if (services[name]) {
+                        var linkPath = PATH.join(sourcePath, "node_modules", name);
+                        console.log("Linking '" + PATH.dirname(services[name]._path) + "' to '" + linkPath + "'.");
+                        if (!FS.existsSync(PATH.dirname(linkPath))) {
+                            FS.mkdirsSync(PATH.dirname(linkPath));
+                        } else
+                        if (FS.existsSync(linkPath)) {
+                            FS.removeSync(linkPath);
+                        }
+                        FS.symlinkSync(PATH.dirname(services[name]._path), linkPath);
+                    }
+                }
+            }
+            console.log(("Calling `npm install` for: " + sourcePath).magenta);
+            var proc = SPAWN("npm", [
+                "install"
+            ], {
+                cwd: sourcePath
+            });
+            proc.stdout.on('data', function (data) {
+                process.stdout.write(data);
+            });
+            proc.stderr.on('data', function (data) {
+                process.stderr.write(data);
+            });
+            proc.on('close', function (code) {
+                if (code !== 0) {
+                    console.error("ERROR: `npm install` exited with code '" + code + "'");
+                    return callback(new Error("`npm install` script exited with code '" + code + "'"));
+                }
+                console.log(("`npm install` for '" + sourcePath + "' done!").green);
+                return callback(null);
+            });
+        })();
+    }
+
+    var services = {};
+    var all = [];    
+    Object.keys(pio._config.services).forEach(function(serviceGroup) {
+        Object.keys(pio._config.services[serviceGroup]).forEach(function(serviceAlias) {            
+            if (pio._config.services[serviceGroup][serviceAlias].enabled === false) {
+                return;
+            }
+            if (pio._config.services[serviceGroup][serviceAlias].install !== true) {
+                return;
+            }
+            all.push(loadPackageDescriptor(PATH.join(pio._configPath, "..", "_upstream", serviceGroup, serviceAlias)).then(function(descriptor) {
+                if (descriptor) {
+                    if (descriptor.pm === "npm") {
+                        services[serviceAlias] = descriptor;
+                    }
+                }
+            }));
+            all.push(loadPackageDescriptor(PATH.join(pio._configPath, "..", pio._config.config["pio"].servicesPath, serviceGroup, serviceAlias)).then(function(descriptor) {
+                if (descriptor) {
+                    if (descriptor.pm === "npm") {
+                        services[serviceAlias] = descriptor;
+                    }
+                }
+            }));
+        });
+    });
+    return Q.all(all).then(function() {
+        var all = [];
+        Object.keys(services).forEach(function(serviceAlias) {
+            all.push(install(services[serviceAlias], services));
+        });
+        return Q.all(all);
+    });
+}
 
 
 if (require.main === module) {
@@ -68,7 +174,7 @@ if (require.main === module) {
                 });
 
             program
-                .command("deploy [service selector]")
+                .command("deploy [service-selector]")
                 .description("Deploy a service")
                 .action(function(selector) {
                     acted = true;
@@ -80,7 +186,7 @@ if (require.main === module) {
                 });
 
             program
-                .command("info [service selector]")
+                .command("info [service-selector]")
                 .description("Config and runtime info")
                 .action(function(selector) {
                     acted = true;
@@ -95,7 +201,7 @@ if (require.main === module) {
                 });
 
             program
-                .command("status [service selector]")
+                .command("status [service-selector]")
                 .description("Get the status of a service")
                 .action(function(selector) {
                     acted = true;
@@ -110,7 +216,7 @@ if (require.main === module) {
                 });
 
             program
-                .command("test [service selector]")
+                .command("test [service-selector]")
                 .description("Test a service")
                 .action(function(selector) {
                     acted = true;
@@ -125,12 +231,24 @@ if (require.main === module) {
                 });
 
             program
-                .command("publish [service selector]")
+                .command("publish [service-selector]")
                 .description("Publish a service")
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
                         return pio.publish();
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("install")
+                .description("Install local tools")
+                .action(function() {
+                    acted = true;
+                    return pio.ready().then(function() {
+                        return install(pio);
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
