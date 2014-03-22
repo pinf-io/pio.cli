@@ -26,12 +26,13 @@ function install(pio) {
             });
         }
         return Q.denodeify(function(callback) {
-            var packageDescriptorPath = PATH.join(serviceBasePath, "package.json");
+            // TODO: Look at `directories` property to determine where to look for sources.
+            var packageDescriptorPath = PATH.join(serviceBasePath, "source/package.json");
             return FS.exists(packageDescriptorPath, function(exists) {
                 if (exists) {
                     return loadDescriptor(packageDescriptorPath, callback);
                 }
-                packageDescriptorPath = PATH.join(serviceBasePath, "source/package.json");
+                packageDescriptorPath = PATH.join(serviceBasePath, "package.json");
                 return FS.exists(packageDescriptorPath, function(exists) {
                     if (exists) {
                         return loadDescriptor(packageDescriptorPath, callback);
@@ -80,7 +81,13 @@ function install(pio) {
                 console.log(("`npm install` for '" + sourcePath + "' done!").green);
                 return callback(null);
             });
-        })();
+        })().fail(function(err) {
+            if (err.code === "EACCES") {
+                console.log(("Ignore install error '" + err.message + "'. We are assuming everything was installed in previous run before being set to read-only.").yellow);
+                return;
+            }
+            throw err;
+        });
     }
 
     var services = {};
@@ -114,7 +121,24 @@ function install(pio) {
         Object.keys(services).forEach(function(serviceAlias) {
             all.push(install(services[serviceAlias], services));
         });
-        return Q.all(all);
+        return Q.all(all).then(function() {
+            return Q.denodeify(function(callback) {
+                return EXEC([
+                    'chmod -Rf 0544 _upstream',
+                    'find _upstream -type f -iname "*" -print0 | xargs -I {} -0 chmod 0444 {}',
+                    'find _upstream/* -maxdepth 1 -type d -print0 | xargs -I {} -0 chmod u+w {}'
+                ].join("\n"), {
+                    cwd: PATH.dirname(pio._configPath)
+                }, function(err, stdout, stderr) {
+                    if (err) {
+                        console.error(stdout);
+                        console.error(stderr);
+                        return callback(err);
+                    }
+                    return callback(null);
+                });
+            })();
+        });
     });
 }
 
@@ -260,11 +284,11 @@ if (require.main === module) {
                 .action(function() {
                     acted = true;
                     return EXEC([
-                        'rm -Rf .pio.*',
-                        'rm -Rf */.pio.*',
-                        'rm -Rf */*/.pio.*',
-                        'rm -Rf */*/*/.pio.*',
-                        'rm -Rf */*/*/*/.pio.*'
+                        'sudo rm -Rf .pio.*',
+                        'sudo rm -Rf */.pio.*',
+                        'sudo rm -Rf */*/.pio.*',
+                        'sudo rm -Rf */*/*/.pio.*',
+                        'sudo rm -Rf */*/*/*/.pio.*'
                     ].join("; "), {
                         cwd: PATH.dirname(pio._configPath)
                     }, function(err, stdout, stderr) {
