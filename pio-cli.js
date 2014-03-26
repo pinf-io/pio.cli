@@ -46,6 +46,12 @@ function install(pio) {
     function install(descriptor, services) {
         return Q.denodeify(function(callback) {
             var sourcePath = PATH.dirname(descriptor._path);
+            var realSourcePath = FS.realpathSync(sourcePath);
+            var realSeedPath = FS.realpathSync(PATH.dirname(pio._configPath));
+            if (realSourcePath.substring(0, realSeedPath.length) !== realSeedPath) {
+                console.log(("Skip install package '" + sourcePath + "' as it is linked from: " + realSourcePath).yellow);
+                return callback(null);
+            }
             if (descriptor.dependencies) {
                 for (var name in descriptor.dependencies) {
                     if (services[name]) {
@@ -157,7 +163,7 @@ if (require.main === module) {
 
     try {
 
-        var pio = new PIO(process.cwd());
+        var pio = new PIO(process.env.PIO_SEED_PATH || process.cwd());
 
         function ensure(program, serviceSelector, options) {
             options = options || {};
