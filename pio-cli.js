@@ -106,7 +106,7 @@ function install(pio) {
             if (pio._config.services[serviceGroup][serviceAlias].install !== true) {
                 return;
             }
-            all.push(loadPackageDescriptor(PATH.join(pio._configPath, "..", "_upstream", serviceGroup, serviceAlias)).then(function(descriptor) {
+            all.push(loadPackageDescriptor(PATH.join(pio._configPath, "..", "_upstream", serviceAlias)).then(function(descriptor) {
                 if (descriptor) {
                     if (descriptor.pm === "npm") {
                         services[serviceAlias] = descriptor;
