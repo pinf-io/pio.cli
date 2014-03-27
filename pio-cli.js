@@ -98,40 +98,31 @@ function install(pio) {
 
     var services = {};
     var all = [];    
-    Object.keys(pio._config.services).forEach(function(serviceGroup) {
-        Object.keys(pio._config.services[serviceGroup]).forEach(function(serviceAlias) {            
-            if (pio._config.services[serviceGroup][serviceAlias].enabled === false) {
-                return;
-            }
-            if (pio._config.services[serviceGroup][serviceAlias].install !== true) {
-                return;
-            }
-            all.push(loadPackageDescriptor(PATH.join(pio._configPath, "..", "_upstream", serviceAlias)).then(function(descriptor) {
-                if (descriptor) {
-                    if (descriptor.pm === "npm") {
-                        services[serviceAlias] = descriptor;
-                    }
+    Object.keys(pio._state["pio.services"].services).forEach(function(serviceId) {            
+        if (pio._state["pio.services"].services[serviceId].enabled === false) {
+            return;
+        }
+        if (pio._state["pio.services"].services[serviceId].descriptor.install !== true) {
+            return;
+        }
+        all.push(loadPackageDescriptor(pio._state["pio.services"].services[serviceId].path).then(function(descriptor) {
+            if (descriptor) {
+                if (descriptor.pm === "npm") {
+                    services[serviceId] = descriptor;
                 }
-            }));
-            all.push(loadPackageDescriptor(PATH.join(pio._configPath, "..", pio._config.config["pio"].servicesPath, serviceGroup, serviceAlias)).then(function(descriptor) {
-                if (descriptor) {
-                    if (descriptor.pm === "npm") {
-                        services[serviceAlias] = descriptor;
-                    }
-                }
-            }));
-        });
+            }
+        }));
     });
     return Q.all(all).then(function() {
         var all = [];
-        Object.keys(services).forEach(function(serviceAlias) {
-            all.push(install(services[serviceAlias], services));
+        Object.keys(services).forEach(function(serviceId) {
+            all.push(install(services[serviceId], services));
         });
         return Q.all(all).then(function() {
             return Q.denodeify(function(callback) {
                 return EXEC([
-                    'chmod -Rf 0544 _upstream',
-                    'find _upstream -type f -iname "*" -print0 | xargs -I {} -0 chmod 0444 {}',
+                    'chmod -Rf 0744 _upstream',
+                    'find _upstream -type f -iname "*" -print0 | xargs -I {} -0 chmod 0744 {}',
                     'find _upstream/* -maxdepth 1 -type d -print0 | xargs -I {} -0 chmod u+w {}'
                 ].join("\n"), {
                     cwd: PATH.dirname(pio._configPath)
@@ -277,11 +268,13 @@ if (require.main === module) {
                 .description("Install local tools")
                 .action(function() {
                     acted = true;
-                    return pio.ready().then(function() {
-                        return install(pio);
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
+                    return ensure(program, null).then(function() {
+                        return pio.ready().then(function() {
+                            return install(pio);
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
                 });
 
             program
@@ -290,11 +283,11 @@ if (require.main === module) {
                 .action(function() {
                     acted = true;
                     return EXEC([
-                        'sudo rm -Rf .pio.*',
-                        'sudo rm -Rf */.pio.*',
-                        'sudo rm -Rf */*/.pio.*',
-                        'sudo rm -Rf */*/*/.pio.*',
-                        'sudo rm -Rf */*/*/*/.pio.*'
+                        'rm -Rf .pio.*',
+                        'rm -Rf */.pio.*',
+                        'rm -Rf */*/.pio.*',
+                        'rm -Rf */*/*/.pio.*',
+                        'rm -Rf */*/*/*/.pio.*'
                     ].join("; "), {
                         cwd: PATH.dirname(pio._configPath)
                     }, function(err, stdout, stderr) {
