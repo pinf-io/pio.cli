@@ -162,9 +162,7 @@ function spin(pio) {
                     if (err) return callback(err);
 
                     var originalPath = PATH.join(
-                        pio._configPath, "../services",
-                        pio._state["pio.services"].services[serviceId].group,
-                        serviceId,
+                        pio._state["pio.services"].services[serviceId].path,
                         PATH.basename(PATH.dirname(path))
                     );
                     if (!FS.existsSync(originalPath)) {
@@ -216,7 +214,7 @@ function spin(pio) {
             var all = [];
             var services = {};
             function uploadFile(task) {
-                var targetPath = "/opt/services/" + task.serviceId + "/live/" + task.aspect + task.relpath;
+                var targetPath = "/opt/services/" + task.serviceId + "/live/" + ((task.aspect) ? "install" : task.aspect) + task.relpath;
                 return Q.denodeify(FS.readFile)(task.path).then(function(body) {
                     console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
                     return pio._state["pio.deploy"]._call("_putFile", {
@@ -292,7 +290,7 @@ function spin(pio) {
         for (var serviceId in filelists) {
             filelists[serviceId].forEach(function(info) {
                 for (var relpath in info.filelist) {
-                    function check(serviceId, relpath) {
+                    function check(serviceId, relpath, info) {
 
                         if (mode === "shortlist") {
                             if (!shortlist[info.path + relpath]) {
@@ -324,7 +322,7 @@ function spin(pio) {
                             return;
                         });
                     }
-                    check(serviceId, relpath);
+                    check(serviceId, relpath, info);
                 }
             });
         }
@@ -345,6 +343,7 @@ function spin(pio) {
                 counts.files += Object.keys(info.filelist).length;
             });
         }
+//        console.log(JSON.stringify(filelists, null, 4));
         console.log(("Watching '" + counts.files + "' files for '" + counts.services + "' services ...").yellow);
 
         // We return a promise that never resolves (unless error) as we want to keep process running.
