@@ -8,6 +8,7 @@ const PIO = require("pio");
 const EXEC = require("child_process").exec;
 const WAITFOR = require("waitfor");
 const SPAWN = require("child_process").spawn;
+const ASYNC = require("async");
 
 
 COLORS.setTheme({
@@ -97,8 +98,8 @@ function install(pio) {
     }
 
     var services = {};
-    var all = [];    
-    Object.keys(pio._state["pio.services"].services).forEach(function(serviceId) {            
+    var all = [];
+    Object.keys(pio._state["pio.services"].services).forEach(function(serviceId) {
         if (pio._state["pio.services"].services[serviceId].enabled === false) {
             return;
         }
@@ -136,6 +137,244 @@ function install(pio) {
                 });
             })();
         });
+    });
+}
+
+function spin(pio) {
+
+    var FS_CONCURRENCY = 30;
+    var CHECK_FREQUENCY_COMPLETE = 5 * 1000;
+    var CHECK_FREQUENCY_SHORTLIST = 1 * 1000;
+
+    function index() {
+        var deferred = Q.defer();
+        var filelists = {};    
+        var waitfor = WAITFOR.parallel(function(err) {
+            if (err) return deferred.reject(err);
+            return deferred.resolve(filelists);
+        });
+        function loadFileList(serviceId, path, callback) {
+            return FS.exists(path, function(exists) {
+                if (!exists) {
+                    return callback(null);
+                }
+                return FS.readJson(path, function(err, _filelist) {
+                    if (err) return callback(err);
+
+                    var originalPath = PATH.join(
+                        pio._configPath, "../services",
+                        pio._state["pio.services"].services[serviceId].group,
+                        serviceId,
+                        PATH.basename(PATH.dirname(path))
+                    );
+                    if (!FS.existsSync(originalPath)) {
+                        originalPath = PATH.dirname(originalPath);
+                    }
+
+                    if (!filelists[serviceId]) {
+                        filelists[serviceId] = [];
+                    }
+
+                    filelists[serviceId].push({
+                        path: originalPath,
+                        aspect: PATH.basename(PATH.dirname(path)),
+                        filelist: _filelist
+                    });
+                    return callback(null);
+                });
+            });
+        }
+        Object.keys(pio._state["pio.services"].services).forEach(function(serviceId) {
+            if (pio._state["pio.services"].services[serviceId].enabled === false) {
+                return;
+            }
+            waitfor(function(callback) {
+                return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "source", ".pio.filelist"), function(err) {
+                    if (err) return callback(err);
+                    return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "scripts", ".pio.filelist"), callback);
+                });
+            });
+        });
+        waitfor();
+        return deferred.promise;
+    }
+
+
+    var shortlist = {};
+    var pending = {};
+
+    var pendingSync = null;
+    function syncPending() {
+        if (pendingSync !== null) {
+            return;
+        }
+        pendingSync = setTimeout(function() {
+            pendingSync = null;
+            var filepaths = pending;
+            pending = {};
+
+            var all = [];
+            var services = {};
+            function uploadFile(task) {
+                var targetPath = "/opt/services/" + task.serviceId + "/live/" + task.aspect + task.relpath;
+                return Q.denodeify(FS.readFile)(task.path).then(function(body) {
+                    console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
+                    return pio._state["pio.deploy"]._call("_putFile", {
+                        path: targetPath,
+                        body: body.toString("base64")
+                    }).then(function(response) {
+                        if (response !== true) {
+                            throw Error("Error uploading!");
+                        }
+                        console.log(("Uploading '" + task.path + "' to '" + targetPath + "' done!").green);
+                        services[task.serviceId] = true;
+                    });
+                });
+            }
+            for (var path in filepaths) {
+                all.push(uploadFile(filepaths[path]));
+            }
+            return Q.all(all).then(function() {
+                var all = [];
+                Object.keys(services).forEach(function(serviceId) {
+                    console.log(("Trigger restart script for service '" + serviceId + "'.").magenta);
+
+                    return pio.ensure(serviceId).then(function() {
+
+                        // TODO: Notify service more gently to see if it can reload first before issuing a full restart.
+                        return pio.restart();
+                    });
+                });
+                return Q.all(all);
+            }).fail(function(err) {
+                console.error(("Error syncing file: " + err.stack).red);
+            });
+        }, 1 * 1000);
+    }
+
+    function notifyChanged(task) {
+        shortlist[task.path] = true;
+        pending[task.path] = task;
+        syncPending();
+    }
+
+    var _checkIfChanged_running = {};
+    function checkIfChanged(filelists, mode) {
+        if (_checkIfChanged_running[mode]) {
+            return Q.resolve();
+        }
+        _checkIfChanged_running[mode] = true;
+        var deferred = Q.defer();
+        var q = ASYNC.queue(function (task, callback) {
+            return FS.stat(task.path, function(err, stat) {
+                if (err) {
+                    // For now we ignore missing files as some paths are still wrong.
+                    if (err.code === "ENOENT") {
+                        return callback(null, null);
+                    }
+                    return callback(err);
+                } else
+                if (stat.size !== task.size) {
+                    console.log(("File '" + task.path + "' changed (size before: " + task.size + "; size after: " + stat.size + ")").magenta);
+                    notifyChanged(task);
+                    return callback(null, stat.size);
+                }
+                return callback(null, null);
+            });
+        }, FS_CONCURRENCY);
+        function finalize() {
+            _checkIfChanged_running[mode] = false;
+            return deferred.resolve();
+        }
+        q.drain = finalize;
+        var path = null;
+        var queued = false;
+        for (var serviceId in filelists) {
+            filelists[serviceId].forEach(function(info) {
+                for (var relpath in info.filelist) {
+                    function check(serviceId, relpath) {
+
+                        if (mode === "shortlist") {
+                            if (!shortlist[info.path + relpath]) {
+                                return;
+                            }
+                        } else
+                        if (mode === "complete") {
+                            if (shortlist[info.path + relpath]) {
+                                return;
+                            }
+                        }
+
+                        queued = true;
+
+                        q.push({
+                            serviceId: serviceId,
+                            relpath: relpath,
+                            path: info.path + relpath,
+                            aspect: info.aspect,
+                            size: info.filelist[relpath].size
+                        }, function(err, newSize) {
+                            if (err) {
+                                return deferred.reject(err);
+                            }
+                            if (newSize) {
+                                info.filelist[relpath].size = newSize;
+                            }
+                            // Nothing more to do here.
+                            return;
+                        });
+                    }
+                    check(serviceId, relpath);
+                }
+            });
+        }
+        if (!queued) {
+            finalize();
+        }
+        return deferred.promise;
+    }
+
+    return index().then(function(filelists) {
+        var counts = {
+            services: 0,
+            files: 0
+        };
+        for (var serviceId in filelists) {
+            counts.services += 1;
+            filelists[serviceId].forEach(function(info) {
+                counts.files += Object.keys(info.filelist).length;
+            });
+        }
+        console.log(("Watching '" + counts.files + "' files for '" + counts.services + "' services ...").yellow);
+
+        // We return a promise that never resolves (unless error) as we want to keep process running.
+        var deferred = Q.defer();
+
+        var checkCompleteInterval = null;
+        function checkComplete() {
+            return checkIfChanged(filelists, "complete").fail(function(err) {
+                clearInterval(checkCompleteInterval);
+                return deferred.reject(err);
+            });
+        }
+        checkCompleteInterval = setInterval(function() {
+            return checkComplete();
+        }, CHECK_FREQUENCY_COMPLETE);
+        checkComplete();
+
+        var checkShortlistInterval = null;
+        function checkShortlist() {
+            return checkIfChanged(filelists, "shortlist").fail(function(err) {
+                clearInterval(checkShortlistInterval);
+                return deferred.reject(err);
+            });
+        }
+        checkShortlistInterval = setInterval(function() {
+            return checkShortlist();
+        }, CHECK_FREQUENCY_SHORTLIST);
+        checkShortlist();
+
+        return deferred.promise;
     });
 }
 
@@ -264,17 +503,63 @@ if (require.main === module) {
                 });
 
             program
+                .command("start <service-selector>")
+                .description("Start a service")
+                .action(function(selector) {
+                    acted = true;
+                    return ensure(program, selector).then(function() {
+                        return pio.start();
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("stop <service-selector>")
+                .description("Stop a service")
+                .action(function(selector) {
+                    acted = true;
+                    return ensure(program, selector).then(function() {
+                        return pio.stop();
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("restart <service-selector>")
+                .description("Restart a service")
+                .action(function(selector) {
+                    acted = true;
+                    return ensure(program, selector).then(function() {
+                        return pio.restart();
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
                 .command("install")
                 .description("Install local tools")
                 .action(function() {
                     acted = true;
                     return ensure(program, null).then(function() {
-                        return pio.ready().then(function() {
-                            return install(pio);
-                        }).then(function() {
-                            return callback(null);
-                        }).fail(callback);
-                    });
+                        return install(pio);
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("spin")
+                .description("Watch source code, sync and reload service on every change")
+                .action(function() {
+                    acted = true;
+                    return ensure(program, null).then(function() {
+                        return spin(pio);
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
                 });
 
             program
@@ -287,7 +572,9 @@ if (require.main === module) {
                         'rm -Rf */.pio.*',
                         'rm -Rf */*/.pio.*',
                         'rm -Rf */*/*/.pio.*',
-                        'rm -Rf */*/*/*/.pio.*'
+                        'rm -Rf */*/*/*/.pio.*',
+                        'sudo killall -HUP mDNSResponder',
+                        'sudo dscacheutil -flushcache'
                     ].join("; "), {
                         cwd: PATH.dirname(pio._configPath)
                     }, function(err, stdout, stderr) {
