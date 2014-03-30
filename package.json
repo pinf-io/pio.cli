@@ -1,6 +1,6 @@
 {
   "name": "pio.cli",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "CLI client for PINF.io service",
   "pm": "npm",
   "main": "pio-cli.js",
@@ -15,7 +15,7 @@
     "async": "~0.4.0",
     "request": "~2.34.0",
     "q": "~1.0.0",
-    "pio": "~0.5.0"
+    "pio": "~0.6.0"
   },
   "devDependencies": {
     "mocha": "~1.17.1"
