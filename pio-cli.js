@@ -542,7 +542,9 @@ if (require.main === module) {
                 .description("Install local tools")
                 .action(function() {
                     acted = true;
-                    return ensure(program, null).then(function() {
+                    return ensure(program, null, {
+                        ignorePluginFailures: true
+                    }).then(function() {
                         return install(pio);
                     }).then(function() {
                         return callback(null);
