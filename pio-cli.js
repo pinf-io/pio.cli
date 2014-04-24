@@ -91,18 +91,27 @@ function spin(pio) {
             var services = {};
             function uploadFile(task) {
                 var targetPath = "/opt/services/" + task.serviceId + "/live/" + ((task.aspect) ? "install" : task.aspect) + task.relpath;
-                return Q.denodeify(FS.readFile)(task.path).then(function(body) {
-                    console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
-                    return pio._state["pio.deploy"]._call("_putFile", {
-                        path: targetPath,
-                        body: body.toString("base64")
-                    }).then(function(response) {
-                        if (response !== true) {
-                            throw Error("Error uploading!");
-                        }
-                        console.log(("Uploading '" + task.path + "' to '" + targetPath + "' done!").green);
-                        services[task.serviceId] = true;
-                    });
+                return Q.denodeify(FS.stat)(task.path).then(function(stats) {
+                    if (stats.isFile()) {
+                        return Q.denodeify(FS.readFile)(task.path).then(function(body) {
+                            console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
+                            return pio._state["pio.deploy"]._call("_putFile", {
+                                path: targetPath,
+                                body: body.toString("base64")
+                            }).then(function(response) {
+                                if (response !== true) {
+                                    throw Error("Error uploading!");
+                                }
+                                console.log(("Uploaded '" + task.path + "' to '" + targetPath + "' done!").green);
+                                services[task.serviceId] = true;
+                            });
+                        }).fail(function(err) {
+                            console.error("Error uploading file for:", task.serviceId);
+                            throw err;                        
+                        });
+                    } else {
+                        console.error(("NOTE: Run `pio deploy " + task.serviceId + "` to deploy new files!").red);
+                    }
                 });
             }
             for (var path in filepaths) {
@@ -117,6 +126,9 @@ function spin(pio) {
 
                         // TODO: Notify service more gently to see if it can reload first before issuing a full restart.
                         return pio.restart();
+                    }).fail(function(err) {
+                        console.error("Error ensuring service:", serviceId);
+                        throw err;                        
                     });
                 });
                 return Q.all(all);
@@ -219,7 +231,9 @@ function spin(pio) {
                 counts.files += Object.keys(info.filelist).length;
             });
         }
-//        console.log(JSON.stringify(filelists, null, 4));
+        if (pio._state["pio.cli.local"].verbose) {
+            console.log(JSON.stringify(filelists, null, 4));
+        }            
         console.log(("Watching '" + counts.files + "' files for '" + counts.services + "' services ...").yellow);
 
         // We return a promise that never resolves (unless error) as we want to keep process running.
@@ -272,9 +286,9 @@ if (require.main === module) {
 
         function ensure(program, serviceSelector, options) {
             options = options || {};
-            if (program.force) {
-                options.force = program.force;
-            }
+            options.force = program.force || false;
+            options.verbose = program.verbose || false;
+            options.debug = program.debug || false;
             return pio.ready().then(function() {
                 return pio.ensure(serviceSelector, options);
             });
