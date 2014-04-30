@@ -2,6 +2,7 @@
 const PATH = require("path");
 const FS = require("fs-extra");
 const COMMANDER = require("commander");
+const CRYPTO = require("crypto");
 const COLORS = require("colors");
 const Q = require("q");
 const PIO = require("pio");
@@ -268,6 +269,24 @@ function spin(pio) {
     });
 }
 
+function open(pio) {
+    var deferred = Q.defer();
+    var authCode = CRYPTO.createHash("sha1");
+    authCode.update(["auth-code", pio._state.pio.instanceId, pio._state.pio.instanceSecret].join(":"));
+    var command = 'open "http://' + pio._config.config["pio"].hostname + ':' + pio._config.services["0-pio"]["pio.server"].env.PORT + '?auth-code=' + authCode.digest("hex") + '"';
+    console.log(("Calling command: " + command).magenta);
+    console.log("NOTE: If this does not exit it needs to be fixed for your OS.");
+    return EXEC(command, function(err, stdout, stderr) {
+        if (err) {
+            console.error(stdout);
+            console.error(stderr);
+            return deferred.reject(err);
+        }
+        console.log("Browser opened!");
+        return deferred.resolve();
+    });
+}
+
 
 if (require.main === module) {
 
@@ -460,6 +479,18 @@ if (require.main === module) {
                     acted = true;
                     return ensure(program, null).then(function() {
                         return spin(pio);
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("open")
+                .description("Open instance admin")
+                .action(function() {
+                    acted = true;
+                    return ensure(program, null).then(function() {
+                        return open(pio);
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
