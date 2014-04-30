@@ -9,6 +9,7 @@ const EXEC = require("child_process").exec;
 const WAITFOR = require("waitfor");
 const SPAWN = require("child_process").spawn;
 const ASYNC = require("async");
+const CLI_TABLE = require("cli-table");
 
 
 COLORS.setTheme({
@@ -313,8 +314,33 @@ if (require.main === module) {
                     acted = true;
                     return ensure(program, null).then(function() {
                         return pio.list().then(function(list) {
-                            list.forEach(function(service) {
-                                console.log(service);
+
+                            // TODO: Get plugins without having to ensure `pio.server`.
+                            //       The plugins should already be accessible and summarized by now.
+                            return ensure(program, "pio.server").then(function() {
+                                var table = new CLI_TABLE({
+                                    chars: {'mid': '', 'left-mid': '', 'mid-mid': '', 'right-mid': ''},
+                                    head: ['Group', 'Service', 'Host'],
+                                    colWidths: [30, 40, 80]
+                                });
+                                list.forEach(function(service) {
+                                    var hostname = "";
+                                    if (
+                                        pio._state['pio.service.deployment']['config.plugin'][service.id] &&
+                                        pio._state['pio.service.deployment']['config.plugin'][service.id].vhosts
+                                    ) {
+                                        hostname = Object.keys(pio._state['pio.service.deployment']['config.plugin'][service.id].vhosts).map(function(hostname) {
+                                            return hostname + ":"+ pio._config.services["0-pio"]["pio.server"].env.PORT;
+                                        }).join(", ");
+                                    }
+                                    table.push([
+                                        service.group,
+                                        service.id,
+                                        hostname
+                                    ]);
+                                });
+    
+                                process.stdout.write(table.toString() + "\n");
                             });
                         });
                     }).then(function() {
