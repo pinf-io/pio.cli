@@ -93,7 +93,11 @@ function spin(pio) {
             var services = {};
             function uploadFile(task) {
                 var targetPath = "/opt/services/" + task.serviceId + "/live/" + ((task.aspect) ? "install" : task.aspect) + task.relpath;
-                return Q.denodeify(FS.stat)(task.path).then(function(stats) {
+                return Q.denodeify(FS.lstat)(task.path).then(function(stats) {
+                    if (stats.isSymbolicLink()) {
+                        console.log(("Skip '" + task.path + "'. It is a symlink.").yellow);
+                        return false;
+                    }
                     if (stats.isFile()) {
                         return Q.denodeify(FS.readFile)(task.path).then(function(body) {
                             console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
@@ -411,11 +415,14 @@ if (require.main === module) {
 
             program
                 .command("test [service-selector]")
+                .option("--local", "Run local tests instead of calling instance.")
                 .description("Test a service")
-                .action(function(selector) {
+                .action(function(selector, options) {
                     acted = true;
                     return ensure(program, selector).then(function() {
-                        return pio.test().then(function(status) {
+                        return pio.test({
+                            local: options.local || false
+                        }).then(function(status) {
                             console.log(JSON.stringify(status, null, 4));
                             return;
                         });
