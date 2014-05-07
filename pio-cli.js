@@ -521,7 +521,7 @@ if (require.main === module) {
                         'rm -Rf services/*/*/*/*/_packages',
                         'echo "Remove cache files that will get re-created" > /dev/null',
                         'rm -Rf services/*/*/.pio.cache',
-                        'pio.json~extends~*'
+                        'rm -Rf pio.json~extends~*'
                     ];
                     if (options.dns) {
                         commands = commands.concat([
