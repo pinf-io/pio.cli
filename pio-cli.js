@@ -505,18 +505,33 @@ if (require.main === module) {
 
             program
                 .command("clean")
+                .option("--dns", "Flush DNS cache (requires sudo)")
                 .description("Clean all cache information forcing a fresh fetch on next run")
-                .action(function() {
+                .action(function(options) {
                     acted = true;
-                    return EXEC([
-                        'rm -Rf .pio.*',
-                        'rm -Rf */.pio.*',
-                        'rm -Rf */*/.pio.*',
-                        'rm -Rf */*/*/.pio.*',
-                        'rm -Rf */*/*/*/.pio.*',
-                        'sudo killall -HUP mDNSResponder',
-                        'sudo dscacheutil -flushcache'
-                    ].join("; "), {
+                    var commands = [
+                        'echo "You can always delete and re-create with \'smi install\'" > /dev/null',
+                        'rm -Rf _upstream',
+//                        'rm -Rf node_modules',
+                        'rm -Rf services/*/*/node_modules',
+                        'rm -Rf services/*/*/*/node_modules',
+                        'rm -Rf services/*/*/*/*/node_modules',
+                        'rm -Rf services/*/*/_packages',
+                        'rm -Rf services/*/*/*/_packages',
+                        'rm -Rf services/*/*/*/*/_packages',
+                        'echo "Remove cache files that will get re-created" > /dev/null',
+                        'rm -Rf services/*/*/.pio.cache',
+                        'pio.json~extends~*'
+                    ];
+                    if (options.dns) {
+                        commands = commands.concat([
+                            'echo "Flush DNS cache" > /dev/null',
+                            'sudo killall -HUP mDNSResponder',
+                            'sudo dscacheutil -flushcache'
+                        ]);
+                    }
+                    console.log(commands.join("\n").magenta);
+                    return EXEC(commands.join("; "), {
                         cwd: PATH.dirname(pio._configPath)
                     }, function(err, stdout, stderr) {
                         if (err) {
