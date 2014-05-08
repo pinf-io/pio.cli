@@ -107,6 +107,9 @@ function spin(pio) {
                             }).then(function(response) {
                                 if (response !== true) {
                                     throw Error("Error uploading!");
+                                    if (response === null) {
+                                        throw "Cannot connect to VM!";
+                                    }
                                 }
                                 console.log(("Uploaded '" + task.path + "' to '" + targetPath + "' done!").green);
                                 services[task.serviceId] = true;
