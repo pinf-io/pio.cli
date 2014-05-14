@@ -170,6 +170,11 @@ function spin(pio) {
                     return callback(err);
                 } else
                 if (stat.size !== task.size) {
+                    // HACK: This file changes even though no FS changes happened.
+                    // TODO: Need to exclude this file.
+                    if (PATH.basename(task.path) === ".smi.json") {
+                        return callback(null, null);
+                    }
                     console.log(("File '" + task.path + "' changed (size before: " + task.size + "; size after: " + stat.size + ")").magenta);
                     notifyChanged(task);
                     return callback(null, stat.size);
