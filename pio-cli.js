@@ -285,7 +285,19 @@ function open(pio) {
     var deferred = Q.defer();
     var authCode = CRYPTO.createHash("sha1");
     authCode.update(["auth-code", pio._state.pio.instanceId, pio._state.pio.instanceSecret].join(":"));
-    var command = 'open "http://' + pio._config.config["pio"].hostname + ':' + pio._config.services["0-pio"]["pio.server"].env.PORT + '?auth-code=' + authCode.digest("hex") + '"';
+    var command = null;
+    if (
+        pio._state['pio.dns'] &&
+        pio._state['pio.dns'].status === "ready"
+    ) {
+        console.log("Using hostname '" + pio._config.config["pio"].hostname + "' to open admin as DNS is resolving to ip '" + pio._config.config["pio.vm"].ip + "'.");
+
+        command = 'open "http://' + pio._config.config["pio"].hostname + ':' + pio._config.services["0-pio"]["pio.server"].env.PORT + '?auth-code=' + authCode.digest("hex") + '"';
+    } else {
+        console.log("Using ip '" + pio._config.config["pio.vm"].ip + "' to open admin as DNS hostname '" + pio._config.config["pio"].hostname + "' is NOT resolving.");
+
+        command = 'open "http://' + pio._config.config["pio.vm"].ip + ':' + pio._config.services["0-pio"]["pio.server"].env.PORT + '?auth-code=' + authCode.digest("hex") + '"';
+    }
     console.log(("Calling command: " + command).magenta);
     console.log("NOTE: If this does not exit it needs to be fixed for your OS.");
     return EXEC(command, function(err, stdout, stderr) {
