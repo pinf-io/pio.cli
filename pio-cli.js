@@ -532,7 +532,7 @@ if (require.main === module) {
                     var commands = [
                         'echo "You can always delete and re-create with \'smi install\'" > /dev/null',
                         'rm -Rf _upstream',
-//                        'rm -Rf node_modules',
+                        'rm -Rf node_modules',
                         'rm -Rf services/*/*/node_modules',
                         'rm -Rf services/*/*/*/node_modules',
                         'rm -Rf services/*/*/*/*/node_modules',
@@ -541,7 +541,7 @@ if (require.main === module) {
                         'rm -Rf services/*/*/*/*/_packages',
                         'echo "Remove cache files that will get re-created" > /dev/null',
                         'rm -Rf services/*/*/.pio.cache',
-                        'rm -Rf pio.json~extends~*'
+                        'rm -Rf *.json~extends~*'
                     ];
                     if (options.dns) {
                         commands = commands.concat([
