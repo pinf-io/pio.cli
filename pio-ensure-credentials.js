@@ -4,13 +4,18 @@ const COLORS = require("colors");
 const FS = require("fs-extra");
 const INQUIRER = require("inquirer");
 const UUID = require("uuid");
+const SMI = require("smi.cli");
+const DEEPMERGE = require("deepmerge");
+
 
 COLORS.setTheme({
     error: 'red'
 });
 
-var activationFilePath = PATH.join(process.cwd() + ".activate.sh");
-var profileFilePath = PATH.join(process.cwd() + ".profile.json");
+var packageRootPath = process.cwd();
+var packageDescriptorFilePath = PATH.join(packageRootPath, "package.json");
+var activationFilePath = PATH.join(packageRootPath + ".activate.sh");
+var profileFilePath = PATH.join(packageRootPath + ".profile.json");
 var providers = {
     "digitalocean": {
         "label": "Digital Ocean",
@@ -53,64 +58,119 @@ var providers = {
 
 function main (callback) {
 
-    function ensureActivationFile(callback) {
+    return SMI.readDescriptor(packageDescriptorFilePath, {
+        basePath: packageRootPath,
+        resolve: true,
+        ignoreMissingExtends: true
+    }, function(err, packageDescriptor) {
+        if (err) return callback(err);
 
-        if (FS.existsSync(activationFilePath)) {
-            // Activation file exists so we don't mess with it.
-            // If you want to modify it you need to do that manually for now.
-            return callback(null);
-        }
+        function ensureActivationFile(callback) {
 
-        function configureProvider(provider, callback) {
-            console.log(("Using provider: " + provider.label).yellow);
-            var prompts = Object.keys(provider.variables).map(function(name) {
-                return {
-                    name: name,
-                    type: provider.variables[name].type,
-                    message: provider.variables[name].question + ":",
-                    choices: Object.keys(providers).map(function(id) {
-                        choicesMap[providers[id].label + " - " + providers[id].url] = id;
-                        return providers[id].label + " - " + providers[id].url;
-                    })
-                };
-            });
-            INQUIRER.prompt(prompts, function(answers) {
-                return callback(null, [
-                    '# ' + provider.label + " - " + provider.url
-                ].concat(Object.keys(answers).map(function(name) {
-                    return 'export ' + name + '="' + answers[name] + '"';
-                })));
-            });
-        }
-
-        console.log("");
-        console.log(("Environment activation file not found at '" + activationFilePath + "'!").cyan);
-        console.log(("Creating activation file ...").magenta);
-
-        console.log("");
-        console.log(("NOTE: It is recommended you use DEDICATD accounts for each of the following environments:").magenta);
-        console.log(("  * Playground - to first experiment with new code on highly disposable instances").magenta);
-        console.log(("  * Development - to conduct development on stable instances").magenta);
-        console.log(("  * Production - to deploy your live systems into mission-critical locked-down clusters").magenta);
-        console.log(("So use credentials for the CORRECT account and keep in mind that for now you should be using a").magenta);
-        console.log(("DEDICATED ACCOUNT FOR this EARLY DEV RELEASE of this dev system!").magenta);
-        console.log(("e.g. accounting+aws-play@company.com, accounting+aws-dev@company.com, accounting+aws-prod@company.com").magenta);
-        console.log("");
-
-        var choicesMap = {};
-        INQUIRER.prompt([
-            {
-                name: "provider",
-                type: "list",
-                message: "Choose a provider to deploy your instance to:",
-                choices: Object.keys(providers).map(function(id) {
-                    choicesMap[providers[id].label + " - " + providers[id].url] = id;
-                    return providers[id].label + " - " + providers[id].url;
-                })
+            if (FS.existsSync(activationFilePath)) {
+                // Activation file exists so we don't mess with it.
+                // If you want to modify it you need to do that manually for now.
+                return callback(null);
             }
-        ], function(answers) {
 
-            return configureProvider(providers[choicesMap[answers.provider]], function(err, _lines) {
+            var choicesMap = {};
+            var choices = Object.keys(providers).map(function(id) {
+                choicesMap[providers[id].label + " - " + providers[id].url] = id;
+                return providers[id].label + " - " + providers[id].url;
+            });
+
+            function configureProvider(provider, callback) {
+                console.log(("Using provider: " + provider.label + " - " + provider.url).yellow);
+                var prompts = Object.keys(provider.variables).map(function(name) {
+                    return {
+                        name: name,
+                        type: provider.variables[name].type,
+                        message: provider.variables[name].question + ":",
+                        choices: choices
+                    };
+                });
+                INQUIRER.prompt(prompts, function(answers) {
+                    return callback(null, [
+                        '# ' + provider.label + " - " + provider.url
+                    ].concat(Object.keys(answers).map(function(name) {
+                        return 'export ' + name + '="' + answers[name] + '"';
+                    })));
+                });
+            }
+
+            console.log("");
+            console.log(("Environment activation file not found at '" + activationFilePath + "'!").cyan);
+            console.log(("Creating activation file ...").magenta);
+
+
+            function ensureProvider(callback) {
+                if (
+                    packageDescriptor &&
+                    packageDescriptor.config &&
+                    packageDescriptor.config["pio.vm"] &&
+                    packageDescriptor.config["pio.vm"].adapter
+                ) {
+                    // Let user enter credentials for pre-selected provider.
+
+                    console.log("");
+                    console.log(("NOTE: It is recommended you use an account DEDICATD to evaluating software!").magenta);
+                    console.log(("WE ACCEPT NO LIABILITY FOR DAMAGE TO YOUR EXISTING RESOURCES RESULTING FROM THE USE OF OUR TOOLING!").magenta);
+                    console.log("");
+
+                    return configureProvider(providers[packageDescriptor.config["pio.vm"].adapter], function(err, _lines) {
+                        if (err) return callback(err);
+
+                        return callback(null, _lines, {
+                            "config": {
+                                "pio.vm": {
+                                    "adapter": packageDescriptor.config["pio.vm"].adapter
+                                }
+                            }
+                        });
+                    });
+                }
+
+                // Let user pick provider.
+
+                console.log("");
+                console.log(("NOTE: It is recommended you use DEDICATD accounts for each of the following environments:").magenta);
+                console.log(("  * Playground - to first experiment with new code on highly disposable instances").magenta);
+                console.log(("  * Development - to conduct development on stable instances").magenta);
+                console.log(("  * Production - to deploy your live systems into mission-critical locked-down clusters").magenta);
+                console.log(("So use credentials for the CORRECT account and keep in mind that for now you should be using a").magenta);
+                console.log(("DEDICATED ACCOUNT FOR this EARLY DEV RELEASE of this dev system!").magenta);
+                console.log(("e.g. accounting+aws-play@company.com, accounting+aws-dev@company.com, accounting+aws-prod@company.com").magenta);
+                console.log(("WE ACCEPT NO LIABILITY FOR DAMAGE TO YOUR EXISTING RESOURCES RESULTING FROM THE USE OF OUR TOOLING!").magenta);
+                console.log("");
+
+                var choicesMap = {};
+                INQUIRER.prompt([
+                    {
+                        name: "provider",
+                        type: "list",
+                        message: "Choose a provider to deploy your instance to:",
+                        choices: Object.keys(providers).map(function(id) {
+                            choicesMap[providers[id].label + " - " + providers[id].url] = id;
+                            return providers[id].label + " - " + providers[id].url;
+                        })
+                    }
+                ], function(answers) {
+                    return configureProvider(providers[choicesMap[answers.provider]], function(err, _lines) {
+                        if (err) return callback(err);
+
+                        return callback(null, _lines, {
+                            "config": {
+                                "pio.vm": {
+                                    "adapter": choicesMap[answers.provider]
+                                }
+                            }
+                        });
+                    });
+                });
+            }
+
+
+            return ensureProvider(function(err, _lines, _profileDescriptor) {
                 if (err) return callback(err);
 
                 var lines = [
@@ -136,28 +196,25 @@ function main (callback) {
                     'export PIO_PROFILE_PATH="' + profileFilePath + '"'
                 ]);
 
-                var profileDescriptor = null;
+                console.log(("Writing activation file to: " + activationFilePath).magenta);
+                FS.outputFileSync(activationFilePath, lines.join("\n"));
+
+
+                var profileDescriptor = {};
                 if (FS.existsSync(profileFilePath)) {
                     profileDescriptor = JSON.parse(FS.readFileSync(profileFilePath));
                 }
-                if (!profileDescriptor) profileDescriptor = {};
-                if (!profileDescriptor.config) profileDescriptor.config = {};
-                if (!profileDescriptor.config["pio.vm"]) profileDescriptor.config["pio.vm"] = {};
-
-                profileDescriptor.config["pio.vm"].adapter = choicesMap[answers.provider];
-
-                console.log(("Writing activation file to: " + activationFilePath).magenta);
-                FS.outputFileSync(activationFilePath, lines.join("\n"));
+                profileDescriptor = DEEPMERGE(profileDescriptor, _profileDescriptor);
 
                 console.log(("Writing profile file to: " + profileFilePath).magenta);
                 FS.outputFileSync(profileFilePath, JSON.stringify(profileDescriptor, null, 4));
 
                 return callback(null);                
             });
-        });
-    }
+        }
 
-    return ensureActivationFile(callback);
+        return ensureActivationFile(callback);
+    });
 }
 
 

@@ -17,8 +17,10 @@
     "request": "~2.34.0",
     "uuid": "~1.4.1",
     "q": "~1.0.0",
+    "deepmerge": "~0.2.7",
     "pio": "^0.6",
     "cli-table": "~0.3.0",
+    "smi.cli": "0.x",
     "inquirer": "~0.5.0"
   },
   "devDependencies": {
