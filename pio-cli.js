@@ -281,36 +281,6 @@ function spin(pio) {
     });
 }
 
-function open(pio) {
-    var deferred = Q.defer();
-    var authCode = CRYPTO.createHash("sha1");
-    authCode.update(["auth-code", pio._state.pio.instanceId, pio._state.pio.instanceSecret].join(":"));
-    var command = null;
-    if (
-        pio._state['pio.dns'] &&
-        pio._state['pio.dns'].status === "ready"
-    ) {
-        console.log("Using hostname '" + pio._config.config["pio"].hostname + "' to open admin as DNS is resolving to ip '" + pio._config.config["pio.vm"].ip + "'.");
-
-        command = 'open "http://' + pio._config.config["pio"].hostname + ':' + pio._config.services["0-pio"]["pio.server"].env.PORT + '?auth-code=' + authCode.digest("hex") + '"';
-    } else {
-        console.log("Using ip '" + pio._config.config["pio.vm"].ip + "' to open admin as DNS hostname '" + pio._config.config["pio"].hostname + "' is NOT resolving.");
-
-        command = 'open "http://' + pio._config.config["pio.vm"].ip + ':' + pio._config.services["0-pio"]["pio.server"].env.PORT + '?auth-code=' + authCode.digest("hex") + '"';
-    }
-    console.log(("Calling command: " + command).magenta);
-    console.log("NOTE: If this does not exit it needs to be fixed for your OS.");
-    return EXEC(command, function(err, stdout, stderr) {
-        if (err) {
-            console.error(stdout);
-            console.error(stderr);
-            return deferred.reject(err);
-        }
-        console.log("Browser opened!");
-        return deferred.resolve();
-    });
-}
-
 
 if (require.main === module) {
 
@@ -405,12 +375,35 @@ if (require.main === module) {
 
             program
                 .command("info [service-selector]")
-                .description("Config and runtime info")
+                .description("Useful information")
                 .action(function(selector) {
                     acted = true;
                     return ensure(program, selector).then(function() {
                         return pio.info().then(function(info) {
-                            console.log(JSON.stringify(info, null, 4));
+                            console.log("For docs on how workspaces are initialized see: https://gist.github.com/cadorn/73609798c63c60489b63");
+                            for (var group in info) {
+                                console.log((group).bold);
+                                for (var name in info[group]) {
+                                    if (info[group].hasOwnProperty(name)) {
+                                        console.log("  " + name + ": " + (""+info[group][name]).yellow);
+                                    }
+                                }
+                            }
+                            return;
+                        });
+                    }).then(function() {
+                        return callback(null);
+                    }).fail(callback);
+                });
+
+            program
+                .command("config [service-selector]")
+                .description("Config and runtime info")
+                .action(function(selector) {
+                    acted = true;
+                    return ensure(program, selector).then(function() {
+                        return pio.config().then(function(config) {
+                            console.log(JSON.stringify(config, null, 4));
                             return;
                         });
                     }).then(function() {
@@ -517,7 +510,7 @@ if (require.main === module) {
                 .action(function() {
                     acted = true;
                     return ensure(program, null).then(function() {
-                        return open(pio);
+                        return pio.open();
                     }).then(function() {
                         return callback(null);
                     }).fail(callback);
