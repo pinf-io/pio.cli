@@ -304,316 +304,369 @@ if (require.main === module) {
             options.force = program.force || false;
             options.verbose = program.verbose || false;
             options.debug = program.debug || false;
-            return pio.ready().then(function() {
-                return pio.ensure(serviceSelector, options);
-            });
+            return pio.ensure(serviceSelector, options);
         }
 
-        return Q.denodeify(function(callback) {
+        return pio.ready().then(function() {
 
-            var program = new COMMANDER.Command();
+            return Q.denodeify(function(callback) {
 
-            program
-                .version(JSON.parse(FS.readFileSync(PATH.join(__dirname, "package.json"))).version)
-                .option("-v, --verbose", "Show verbose progress")
-                .option("--debug", "Show debug output")
-                .option("-f, --force", "Force an operation when it would normally be skipped");
+                var program = new COMMANDER.Command();
 
-            var acted = false;
+                program
+                    .version(JSON.parse(FS.readFileSync(PATH.join(__dirname, "package.json"))).version)
+                    .option("-v, --verbose", "Show verbose progress")
+                    .option("--debug", "Show debug output")
+                    .option("-f, --force", "Force an operation when it would normally be skipped");
 
-            program
-                .command("list [filter]")
-                .description("List services")
-                .action(function(path) {
-                    acted = true;
-                    return ensure(program, null).then(function() {
-                        return pio.list().then(function(list) {
+                var acted = false;
 
-                            // TODO: Get plugins without having to ensure `pio.server`.
-                            //       The plugins should already be accessible and summarized by now.
-                            return ensure(program, "pio.server").then(function() {
-                                var table = new CLI_TABLE({
-                                    chars: {'mid': '', 'left-mid': '', 'mid-mid': '', 'right-mid': ''},
-                                    head: ['Group', 'Service', 'Host'],
-                                    colWidths: [30, 40, 80]
+                program
+                    .command("list [filter]")
+                    .description("List services")
+                    .action(function(path) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, null).then(function() {
+                            return pio.list().then(function(list) {
+
+                                // TODO: Get plugins without having to ensure `pio.server`.
+                                //       The plugins should already be accessible and summarized by now.
+                                return ensure(program, "pio.server").then(function() {
+                                    var table = new CLI_TABLE({
+                                        chars: {'mid': '', 'left-mid': '', 'mid-mid': '', 'right-mid': ''},
+                                        head: ['Group', 'Service', 'Host'],
+                                        colWidths: [30, 40, 80]
+                                    });
+                                    list.forEach(function(service) {
+                                        var hostname = "";
+                                        if (
+                                            pio._state['pio.service.deployment']['config.plugin'][service.id] &&
+                                            pio._state['pio.service.deployment']['config.plugin'][service.id].vhosts
+                                        ) {
+                                            hostname = Object.keys(pio._state['pio.service.deployment']['config.plugin'][service.id].vhosts).map(function(hostname) {
+                                                return hostname + ":"+ pio._config.services["0-pio"]["pio.server"].env.PORT;
+                                            }).join(", ");
+                                        }
+                                        table.push([
+                                            service.group,
+                                            service.id,
+                                            hostname
+                                        ]);
+                                    });
+        
+                                    process.stdout.write(table.toString() + "\n");
                                 });
-                                list.forEach(function(service) {
-                                    var hostname = "";
-                                    if (
-                                        pio._state['pio.service.deployment']['config.plugin'][service.id] &&
-                                        pio._state['pio.service.deployment']['config.plugin'][service.id].vhosts
-                                    ) {
-                                        hostname = Object.keys(pio._state['pio.service.deployment']['config.plugin'][service.id].vhosts).map(function(hostname) {
-                                            return hostname + ":"+ pio._config.services["0-pio"]["pio.server"].env.PORT;
-                                        }).join(", ");
-                                    }
-                                    table.push([
-                                        service.group,
-                                        service.id,
-                                        hostname
-                                    ]);
-                                });
-    
-                                process.stdout.write(table.toString() + "\n");
                             });
-                        });
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
 
-            program
-                .command("deploy [service-selector]")
-                .description("Deploy a service")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.deploy();
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
+                program
+                    .command("deploy [service-selector]")
+                    .description("Deploy a service")
+                    .action(function(selector) {
+                        acted = true;
+                        return ensure(program, selector).then(function() {
+                            return pio.deploy();
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
 
-            program
-                .command("info [service-selector]")
-                .description("Useful information")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.info().then(function(info) {
-                            console.log("For docs on how workspaces are initialized see: https://gist.github.com/cadorn/73609798c63c60489b63");
-                            for (var group in info) {
-                                console.log((group).bold);
-                                for (var name in info[group]) {
-                                    if (info[group].hasOwnProperty(name)) {
-                                        console.log("  " + name + ": " + (""+info[group][name]).yellow);
+                program
+                    .command("info [service-selector]")
+                    .description("Useful information")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.info().then(function(info) {
+                                console.log("For docs on how workspaces are initialized see: https://gist.github.com/cadorn/73609798c63c60489b63");
+                                for (var group in info) {
+                                    console.log((group).bold);
+                                    for (var name in info[group]) {
+                                        if (info[group].hasOwnProperty(name)) {
+                                            console.log("  " + name + ": " + (""+info[group][name]).yellow);
+                                        }
                                     }
                                 }
-                            }
-                            return;
-                        });
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("config [service-selector]")
-                .description("Config and runtime info")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.config().then(function(config) {
-                            console.log(JSON.stringify(config, null, 4));
-                            return;
-                        });
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("status [service-selector]")
-                .description("Get the status of a service")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.status().then(function(status) {
-                            console.log(JSON.stringify(status, null, 4));
-                            return;
-                        });
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("test [service-selector]")
-                .option("--local", "Run local tests instead of calling instance.")
-                .description("Test a service")
-                .action(function(selector, options) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.test({
-                            local: options.local || false
-                        }).then(function(status) {
-                            console.log(JSON.stringify(status, null, 4));
-                            return;
-                        });
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("publish [service-selector]")
-                .description("Publish a service")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.publish();
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("start <service-selector>")
-                .description("Start a service")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.start();
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("stop <service-selector>")
-                .description("Stop a service")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.stop();
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("restart <service-selector>")
-                .description("Restart a service")
-                .action(function(selector) {
-                    acted = true;
-                    return ensure(program, selector).then(function() {
-                        return pio.restart();
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("spin")
-                .description("Watch source code, sync and reload service on every change")
-                .action(function() {
-                    acted = true;
-                    return ensure(program, null).then(function() {
-                        return spin(pio);
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("open")
-                .description("Open instance admin")
-                .action(function() {
-                    acted = true;
-                    return ensure(program, null).then(function() {
-                        return pio.open();
-                    }).then(function() {
-                        return callback(null);
-                    }).fail(callback);
-                });
-
-            program
-                .command("clean")
-                .option("--dns", "Flush DNS cache (requires sudo)")
-                .option("--terminate", "Terminate the instance")
-                .description("Clean all cache information forcing a fresh fetch on next run")
-                .action(function(options) {
-                    acted = true;
-                    var commands = [
-                        'echo "You can always delete and re-create with \'smi install\'" > /dev/null',
-                        'rm -Rf _upstream',
-                        'rm -Rf node_modules',
-                        'rm -Rf services/*/*/node_modules',
-                        'rm -Rf services/*/*/*/node_modules',
-                        'rm -Rf services/*/*/*/*/node_modules',
-                        'rm -Rf services/*/*/_packages',
-                        'rm -Rf services/*/*/*/_packages',
-                        'rm -Rf services/*/*/*/*/_packages',
-                        'echo "Remove cache files that will get re-created" > /dev/null',
-                        'rm -Rf services/*/*/.pio.cache',
-                        'rm -Rf *.json~extends~*'
-                    ];
-                    if (options.dns) {
-                        commands = commands.concat([
-                            'echo "Flush DNS cache" > /dev/null',
-                            'sudo killall -HUP mDNSResponder',
-                            'sudo dscacheutil -flushcache'
-                        ]);
-                    }
-                    function clean(callback) {
-                        console.log(commands.join("\n").magenta);
-                        return EXEC(commands.join("; "), {
-                            cwd: PATH.dirname(pio._configPath)
-                        }, function(err, stdout, stderr) {
-                            if (err) {
-                                console.error(stdout);
-                                console.error(stderr);
-                                return callback(err);
-                            }
-                            console.log("All cache files cleaned!".green);
-                            return callback(null);
-                        });
-                    }
-                    if (options.terminate) {
-                        return ensure(program, null).then(function() {
-                            return Q.denodeify(function(callback) {
-
-                                var code = ""+(""+Math.random()).substring(5, 8);
-
-                                console.log("");
-                                console.log("Are you " + "ABSOLUTELY".bold + " sure you want to " + "FOREVER DESTROY".bold + " the VM at\n  " + (""+pio._state["pio.vm"].ip).red.bold + " <- " + (""+pio._state["pio"].hostname).red.bold + "\nand ALL DATA on it?");
-                                console.log("");
-
-                                return INQUIRER.prompt([
-                                    {
-                                        name: "destroy",
-                                        type: "input",
-                                        message: "If so enter " + code.bold.red
-                                    }
-                                ], function(answers) {
-
-                                    if (answers["destroy"] !== code) {
-                                        console.log("Aborted.");
-                                        return callback(true);
-                                    }
-
-                                    return pio.terminate(pio._state["pio.vm"].ip).then(function() {
-                                        return callback(null);
-                                    }).fail(callback);
-                                });
-                            })();
+                                return;
+                            });
                         }).then(function() {
-                            return clean(callback);
+                            return callback(null);
                         }).fail(callback);
+                    });
+
+                program
+                    .command("config [service-selector]")
+                    .description("Config and runtime info")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.config().then(function(config) {
+                                console.log(JSON.stringify(config, null, 4));
+                                return;
+                            });
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("status [service-selector]")
+                    .description("Get the status of a service")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.status().then(function(status) {
+                                console.log(JSON.stringify(status, null, 4));
+                                return;
+                            });
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("test [service-selector]")
+                    .option("--local", "Run local tests instead of calling instance.")
+                    .description("Test a service")
+                    .action(function(selector, options) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.test({
+                                local: options.local || false
+                            }).then(function(status) {
+                                console.log(JSON.stringify(status, null, 4));
+                                return;
+                            });
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("publish [service-selector]")
+                    .description("Publish a service")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.publish();
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("start <service-selector>")
+                    .description("Start a service")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.start();
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("stop <service-selector>")
+                    .description("Stop a service")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.stop();
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("restart <service-selector>")
+                    .description("Restart a service")
+                    .action(function(selector) {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.restart();
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("spin")
+                    .description("Watch source code, sync and reload service on every change")
+                    .action(function() {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, null).then(function() {
+                            return spin(pio);
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("open")
+                    .description("Open instance admin")
+                    .action(function() {
+                        acted = true;
+                        if (!pio._config.config["pio"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, null).then(function() {
+                            return pio.open();
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
+                    .command("clean")
+                    .option("--dns", "Flush DNS cache (requires sudo)")
+                    .option("--terminate", "Terminate the instance")
+                    .description("Clean all cache information forcing a fresh fetch on next run")
+                    .action(function(options) {
+                        acted = true;
+                        var commands = [
+                            'echo "You can always delete and re-create with \'smi install\'" > /dev/null',
+                            'rm -Rf _upstream',
+                            'rm -Rf node_modules',
+                            'rm -Rf services/*/*/node_modules',
+                            'rm -Rf services/*/*/*/node_modules',
+                            'rm -Rf services/*/*/*/*/node_modules',
+                            'rm -Rf services/*/*/_packages',
+                            'rm -Rf services/*/*/*/_packages',
+                            'rm -Rf services/*/*/*/*/_packages',
+                            'echo "Remove cache files that will get re-created" > /dev/null',
+                            'rm -Rf services/*/*/.pio.cache',
+                            'rm -Rf *.json~extends~*'
+                        ];
+                        if (options.dns) {
+                            commands = commands.concat([
+                                'echo "Flush DNS cache" > /dev/null',
+                                'sudo killall -HUP mDNSResponder',
+                                'sudo dscacheutil -flushcache'
+                            ]);
+                        }
+                        function clean(callback) {
+                            console.log(commands.join("\n").magenta);
+                            return EXEC(commands.join("; "), {
+                                cwd: PATH.dirname(pio._configPath)
+                            }, function(err, stdout, stderr) {
+                                if (err) {
+                                    console.error(stdout);
+                                    console.error(stderr);
+                                    return callback(err);
+                                }
+                                console.log("All cache files cleaned!".green);
+                                return callback(null);
+                            });
+                        }
+                        if (options.terminate) {
+                            return ensure(program, null, {
+                                "state": {
+                                    "pio.vm": {
+                                        "required": false,
+                                        "skip": [
+                                            "provision"
+                                        ]
+                                    },
+                                    "pio.dns": {
+                                        "required": false,
+                                        "skip": [
+                                            "provision"
+                                        ]
+                                    }
+                                }
+                            }).then(function() {
+                                return Q.denodeify(function(callback) {
+
+                                    if (!pio._state["pio.vm"].ip) {
+                                        return callback("Cannot terminate. Cannot determine IP! Does VM at '" + pio._state["pio"].hostname + "' have an IP yet?");
+                                    }
+
+                                    var code = ""+(""+Math.random()).substring(5, 8);
+
+                                    console.log("");
+                                    console.log("Are you " + "ABSOLUTELY".bold + " sure you want to " + "FOREVER DESTROY".bold + " the VM at\n  " + (""+pio._state["pio.vm"].ip).red.bold + " <- " + (""+pio._state["pio"].hostname).red.bold + "\nand ALL DATA on it?");
+                                    console.log("");
+
+                                    return INQUIRER.prompt([
+                                        {
+                                            name: "destroy",
+                                            type: "input",
+                                            message: "If so enter " + code.bold.red
+                                        }
+                                    ], function(answers) {
+
+                                        if (answers["destroy"] !== code) {
+                                            console.log("Aborted.");
+                                            return callback(true);
+                                        }
+
+                                        return pio.terminate(pio._state["pio.vm"].ip).then(function() {
+                                            return callback(null);
+                                        }).fail(callback);
+                                    });
+                                })();
+                            }).then(function() {
+                                return clean(callback);
+                            }).fail(callback);
+                        }
+                        return clean(callback);
+                    });
+
+                program
+                    .command("gen-uuid")
+                    .description("Generate a new v4 UUID")
+                    .action(function() {
+                        acted = true;
+                        console.log(pio.API.UUID.v4());
+                        return callback(null);
+                    });
+
+                program.parse(process.argv);
+
+                if (!acted) {
+                    var command = process.argv.slice(2).join(" ");
+                    if (command) {
+                        console.error(("ERROR: Command '" + process.argv.slice(2).join(" ") + "' not found!").error);
                     }
-                    return clean(callback);
-                });
-
-            program
-                .command("gen-uuid")
-                .description("Generate a new v4 UUID")
-                .action(function() {
-                    acted = true;
-                    console.log(pio.API.UUID.v4());
+                    program.outputHelp();
                     return callback(null);
-                });
-
-            program.parse(process.argv);
-
-            if (!acted) {
-                var command = process.argv.slice(2).join(" ");
-                if (command) {
-                    console.error(("ERROR: Command '" + process.argv.slice(2).join(" ") + "' not found!").error);
                 }
-                program.outputHelp();
-                return callback(null);
-            }
-        })().then(function() {
+            })();
+        }).then(function() {
             return pio.shutdown().then(function() {
 
                 // NOTE: We force an exit here as for some reason it hangs when there is no server.
