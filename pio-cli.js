@@ -11,6 +11,7 @@ const WAITFOR = require("waitfor");
 const SPAWN = require("child_process").spawn;
 const ASYNC = require("async");
 const CLI_TABLE = require("cli-table");
+const INQUIRER = require("inquirer");
 
 
 COLORS.setTheme({
@@ -519,6 +520,7 @@ if (require.main === module) {
             program
                 .command("clean")
                 .option("--dns", "Flush DNS cache (requires sudo)")
+                .option("--terminate", "Terminate the instance")
                 .description("Clean all cache information forcing a fresh fetch on next run")
                 .action(function(options) {
                     acted = true;
@@ -543,18 +545,53 @@ if (require.main === module) {
                             'sudo dscacheutil -flushcache'
                         ]);
                     }
-                    console.log(commands.join("\n").magenta);
-                    return EXEC(commands.join("; "), {
-                        cwd: PATH.dirname(pio._configPath)
-                    }, function(err, stdout, stderr) {
-                        if (err) {
-                            console.error(stdout);
-                            console.error(stderr);
-                            return callback(err);
-                        }
-                        console.log("All cache files cleaned!".green);
-                        return callback(null);
-                    });
+                    function clean(callback) {
+                        console.log(commands.join("\n").magenta);
+                        return EXEC(commands.join("; "), {
+                            cwd: PATH.dirname(pio._configPath)
+                        }, function(err, stdout, stderr) {
+                            if (err) {
+                                console.error(stdout);
+                                console.error(stderr);
+                                return callback(err);
+                            }
+                            console.log("All cache files cleaned!".green);
+                            return callback(null);
+                        });
+                    }
+                    if (options.terminate) {
+                        return ensure(program, null).then(function() {
+                            return Q.denodeify(function(callback) {
+
+                                var code = ""+(""+Math.random()).substring(5, 8);
+
+                                console.log("");
+                                console.log("Are you " + "ABSOLUTELY".bold + " sure you want to " + "FOREVER DESTROY".bold + " the VM at\n  " + (""+pio._state["pio.vm"].ip).red.bold + " <- " + (""+pio._state["pio"].hostname).red.bold + "\nand ALL DATA on it?");
+                                console.log("");
+
+                                return INQUIRER.prompt([
+                                    {
+                                        name: "destroy",
+                                        type: "input",
+                                        message: "If so enter " + code.bold.red
+                                    }
+                                ], function(answers) {
+
+                                    if (answers["destroy"] !== code) {
+                                        console.log("Aborted.");
+                                        return callback(true);
+                                    }
+
+                                    return pio.terminate(pio._state["pio.vm"].ip).then(function() {
+                                        return callback(null);
+                                    }).fail(callback);
+                                });
+                            })();
+                        }).then(function() {
+                            return clean(callback);
+                        }).fail(callback);
+                    }
+                    return clean(callback);
                 });
 
             program
