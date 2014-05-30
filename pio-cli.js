@@ -326,7 +326,7 @@ if (require.main === module) {
                     .description("List services")
                     .action(function(path) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, null).then(function() {
@@ -382,7 +382,7 @@ if (require.main === module) {
                     .description("Useful information")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -408,7 +408,7 @@ if (require.main === module) {
                     .description("Config and runtime info")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -426,7 +426,7 @@ if (require.main === module) {
                     .description("Get the status of a service")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -445,7 +445,7 @@ if (require.main === module) {
                     .description("Test a service")
                     .action(function(selector, options) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -465,7 +465,7 @@ if (require.main === module) {
                     .description("Publish a service")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -480,7 +480,7 @@ if (require.main === module) {
                     .description("Start a service")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -495,7 +495,7 @@ if (require.main === module) {
                     .description("Stop a service")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -510,7 +510,7 @@ if (require.main === module) {
                     .description("Restart a service")
                     .action(function(selector) {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
@@ -525,7 +525,7 @@ if (require.main === module) {
                     .description("Watch source code, sync and reload service on every change")
                     .action(function() {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, null).then(function() {
@@ -540,7 +540,7 @@ if (require.main === module) {
                     .description("Open instance admin")
                     .action(function() {
                         acted = true;
-                        if (!pio._config.config["pio"].ip) {
+                        if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, null).then(function() {
