@@ -379,20 +379,25 @@ if (require.main === module) {
 
                 program
                     .command("info [service-selector]")
+                    .option("--variable <selector>", "Return specific variable value only")
                     .description("Useful information")
-                    .action(function(selector) {
+                    .action(function(selector, options) {
                         acted = true;
                         if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
                             return pio.info().then(function(info) {
-                                console.log("For docs on how workspaces are initialized see: https://gist.github.com/cadorn/73609798c63c60489b63");
-                                for (var group in info) {
-                                    console.log((group).bold);
-                                    for (var name in info[group]) {
-                                        if (info[group].hasOwnProperty(name)) {
-                                            console.log("  " + name + ": " + (""+info[group][name]).yellow);
+                                if (options.variable) {
+                                    eval('process.stdout.write(info.' + options.variable + ');');
+                                } else {
+                                    console.log("For docs on how workspaces are initialized see: https://gist.github.com/cadorn/73609798c63c60489b63");
+                                    for (var group in info) {
+                                        console.log((group).bold);
+                                        for (var name in info[group]) {
+                                            if (info[group].hasOwnProperty(name)) {
+                                                console.log("  " + name + ": " + (""+info[group][name]).yellow);
+                                            }
                                         }
                                     }
                                 }
@@ -405,15 +410,20 @@ if (require.main === module) {
 
                 program
                     .command("config [service-selector]")
+                    .option("--variable <selector>", "Return specific variable value only")
                     .description("Config and runtime info")
-                    .action(function(selector) {
+                    .action(function(selector, options) {
                         acted = true;
                         if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
                             return pio.config().then(function(config) {
-                                console.log(JSON.stringify(config, null, 4));
+                                if (options.variable) {
+                                    eval('process.stdout.write(config.' + options.variable + ');');
+                                } else {
+                                    console.log(JSON.stringify(config, null, 4));
+                                }
                                 return;
                             });
                         }).then(function() {
