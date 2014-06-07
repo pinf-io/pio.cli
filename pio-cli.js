@@ -304,6 +304,7 @@ if (require.main === module) {
             options.force = program.force || false;
             options.verbose = program.verbose || false;
             options.debug = program.debug || false;
+            options.silent = program.silent || false;
             return pio.ensure(serviceSelector, options);
         }
 
@@ -316,7 +317,8 @@ if (require.main === module) {
                 program
                     .version(JSON.parse(FS.readFileSync(PATH.join(__dirname, "package.json"))).version)
                     .option("-v, --verbose", "Show verbose progress")
-                    .option("--debug", "Show debug output")
+                    .option("-d, --debug", "Show debug output")
+                    .option("-s, --silent", "Show no output")
                     .option("-f, --force", "Force an operation when it would normally be skipped");
 
                 var acted = false;
