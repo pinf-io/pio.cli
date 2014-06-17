@@ -302,7 +302,7 @@ if (require.main === module) {
         function ensure(program, serviceSelector, options) {
             options = options || {};
             options.force = program.force || false;
-            options.verbose = program.verbose || false;
+            options.verbose = program.verbose || program.debug || false;
             options.debug = program.debug || false;
             options.silent = program.silent || false;
             return pio.ensure(serviceSelector, options);
@@ -566,23 +566,27 @@ if (require.main === module) {
                     .command("clean")
                     .option("--dns", "Flush DNS cache (requires sudo)")
                     .option("--terminate", "Terminate the instance")
+                    .option("--noclean", "Do not clean")
                     .description("Clean all cache information forcing a fresh fetch on next run")
                     .action(function(options) {
                         acted = true;
-                        var commands = [
-                            'echo "You can always delete and re-create with \'smi install\'" > /dev/null',
-                            'rm -Rf _upstream',
-                            'rm -Rf node_modules',
-                            'rm -Rf services/*/*/node_modules',
-                            'rm -Rf services/*/*/*/node_modules',
-                            'rm -Rf services/*/*/*/*/node_modules',
-                            'rm -Rf services/*/*/_packages',
-                            'rm -Rf services/*/*/*/_packages',
-                            'rm -Rf services/*/*/*/*/_packages',
-                            'echo "Remove cache files that will get re-created" > /dev/null',
-                            'rm -Rf services/*/*/.pio.cache',
-                            'rm -Rf *.json~extends~*'
-                        ];
+                        var commands = [];
+                        if (!options.noclean) {
+                            commands = commands.concat([
+                                'echo "You can always delete and re-create with \'smi install\'" > /dev/null',
+                                'rm -Rf _upstream',
+                                'rm -Rf node_modules',
+                                'rm -Rf services/*/*/node_modules',
+                                'rm -Rf services/*/*/*/node_modules',
+                                'rm -Rf services/*/*/*/*/node_modules',
+                                'rm -Rf services/*/*/_packages',
+                                'rm -Rf services/*/*/*/_packages',
+                                'rm -Rf services/*/*/*/*/_packages',
+                                'echo "Remove cache files that will get re-created" > /dev/null',
+                                'rm -Rf services/*/*/.pio.cache',
+                                'rm -Rf *.json~extends~*'
+                            ]);
+                        }
                         if (options.dns) {
                             commands = commands.concat([
                                 'echo "Flush DNS cache" > /dev/null',
