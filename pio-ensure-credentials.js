@@ -143,7 +143,9 @@ function main (callback) {
                 console.log(("WE ACCEPT NO LIABILITY FOR DAMAGE TO YOUR EXISTING RESOURCES RESULTING FROM THE USE OF OUR TOOLING!").magenta);
                 console.log("");
 
-                var choicesMap = {};
+                var choicesMap = {
+                    "Skip": "skip"
+                };
                 INQUIRER.prompt([
                     {
                         name: "provider",
@@ -152,9 +154,12 @@ function main (callback) {
                         choices: Object.keys(providers).map(function(id) {
                             choicesMap[providers[id].label + " - " + providers[id].url] = id;
                             return providers[id].label + " - " + providers[id].url;
-                        })
+                        }).concat("Skip")
                     }
                 ], function(answers) {
+                    if (choicesMap[answers.provider] === "skip") {
+                        return callback(null, null, null);
+                    }
                     return configureProvider(providers[choicesMap[answers.provider]], function(err, _lines) {
                         if (err) return callback(err);
 
@@ -172,6 +177,11 @@ function main (callback) {
 
             return ensureProvider(function(err, _lines, _profileDescriptor) {
                 if (err) return callback(err);
+
+                if (!_lines || !_profileDescriptor) {
+                    console.log("Skip writing activation file.");
+                    return callback(null);
+                }
 
                 var lines = [
                     "#!/bin/bash -e",
