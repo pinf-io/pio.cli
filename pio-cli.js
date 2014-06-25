@@ -25,261 +25,281 @@ function spin(pio) {
     var CHECK_FREQUENCY_COMPLETE = 5 * 1000;
     var CHECK_FREQUENCY_SHORTLIST = 1 * 1000;
 
-    function index() {
-        var deferred = Q.defer();
-        var filelists = {};    
-        var waitfor = WAITFOR.parallel(function(err) {
-            if (err) return deferred.reject(err);
-            return deferred.resolve(filelists);
-        });
-        function loadFileList(serviceId, path, callback) {
-            return FS.exists(path, function(exists) {
-                if (!exists) {
-                    return callback(null);
-                }
-                return FS.readJson(path, function(err, _filelist) {
-                    if (err) return callback(err);
-
-                    var originalPath = PATH.join(
-                        pio._state["pio.services"].services[serviceId].path,
-                        PATH.basename(PATH.dirname(path))
-                    );
-                    if (!FS.existsSync(originalPath)) {
-                        originalPath = PATH.dirname(originalPath);
-                    }
-
-                    if (!filelists[serviceId]) {
-                        filelists[serviceId] = [];
-                    }
-
-                    filelists[serviceId].push({
-                        path: originalPath,
-                        aspect: PATH.basename(PATH.dirname(path)),
-                        filelist: _filelist
-                    });
-                    return callback(null);
-                });
-            });
-        }
-        Object.keys(pio._state["pio.services"].services).forEach(function(serviceId) {
-            if (pio._state["pio.services"].services[serviceId].enabled === false) {
-                return;
-            }
-            waitfor(function(callback) {
-                return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "source", ".pio.filelist"), function(err) {
-                    if (err) return callback(err);
-                    return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "scripts", ".pio.filelist"), callback);
-                });
-            });
-        });
-        waitfor();
-        return deferred.promise;
-    }
-
-
-    var shortlist = {};
-    var pending = {};
-
-    var pendingSync = null;
-    function syncPending() {
-        if (pendingSync !== null) {
-            return;
-        }
-        pendingSync = setTimeout(function() {
-            pendingSync = null;
-            var filepaths = pending;
-            pending = {};
-
-            var all = [];
-            var services = {};
-            function uploadFile(task) {
-                var targetPath = "/opt/services/" + task.serviceId + "/live/" + ((task.aspect) ? "install" : task.aspect) + task.relpath;
-                return Q.denodeify(FS.lstat)(task.path).then(function(stats) {
-                    if (stats.isSymbolicLink()) {
-                        console.log(("Skip '" + task.path + "'. It is a symlink.").yellow);
-                        return false;
-                    }
-                    if (stats.isFile()) {
-                        return Q.denodeify(FS.readFile)(task.path).then(function(body) {
-                            console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
-                            return pio._state["pio.deploy"]._call("_putFile", {
-                                path: targetPath,
-                                body: body.toString("base64")
-                            }).then(function(response) {
-                                if (response !== true) {
-                                    throw Error("Error uploading!");
-                                    if (response === null) {
-                                        throw "Cannot connect to VM!";
-                                    }
-                                }
-                                console.log(("Uploaded '" + task.path + "' to '" + targetPath + "' done!").green);
-                                services[task.serviceId] = true;
-                            });
-                        }).fail(function(err) {
-                            console.error("Error uploading file for:", task.serviceId);
-                            throw err;                        
-                        });
-                    } else {
-                        console.error(("NOTE: Run `pio deploy " + task.serviceId + "` to deploy new files!").red);
-                    }
-                });
-            }
-            for (var path in filepaths) {
-                all.push(uploadFile(filepaths[path]));
-            }
-            return Q.all(all).then(function() {
-                var all = [];
-                Object.keys(services).forEach(function(serviceId) {
-                    console.log(("Trigger restart script for service '" + serviceId + "'.").magenta);
-
-                    return pio.ensure(serviceId).then(function() {
-
-                        // TODO: Notify service more gently to see if it can reload first before issuing a full restart.
-                        return pio.restart();
-                    }).fail(function(err) {
-                        console.error("Error ensuring service:", serviceId);
-                        throw err;                        
-                    });
-                });
-                return Q.all(all);
-            }).fail(function(err) {
-                console.error(("Error syncing file: " + err.stack).red);
-            });
-        }, 1 * 1000);
-    }
-
-    function notifyChanged(task) {
-        shortlist[task.path] = true;
-        pending[task.path] = task;
-        syncPending();
-    }
-
-    var _checkIfChanged_running = {};
-    function checkIfChanged(filelists, mode) {
-        if (_checkIfChanged_running[mode]) {
-            return Q.resolve();
-        }
-        _checkIfChanged_running[mode] = true;
-        var deferred = Q.defer();
-        var q = ASYNC.queue(function (task, callback) {
-            return FS.stat(task.path, function(err, stat) {
-                if (err) {
-                    // For now we ignore missing files as some paths are still wrong.
-                    if (err.code === "ENOENT") {
-                        return callback(null, null);
-                    }
-                    return callback(err);
-                } else
-                if (stat.size !== task.size) {
-                    // HACK: This file changes even though no FS changes happened.
-                    // TODO: Need to exclude this file.
-                    if (PATH.basename(task.path) === ".smi.json") {
-                        return callback(null, null);
-                    }
-                    console.log(("File '" + task.path + "' changed (size before: " + task.size + "; size after: " + stat.size + ")").magenta);
-                    notifyChanged(task);
-                    return callback(null, stat.size);
-                }
-                return callback(null, null);
-            });
-        }, FS_CONCURRENCY);
-        function finalize() {
-            _checkIfChanged_running[mode] = false;
-            return deferred.resolve();
-        }
-        q.drain = finalize;
-        var path = null;
-        var queued = false;
-        for (var serviceId in filelists) {
-            filelists[serviceId].forEach(function(info) {
-                for (var relpath in info.filelist) {
-                    function check(serviceId, relpath, info) {
-
-                        if (mode === "shortlist") {
-                            if (!shortlist[info.path + relpath]) {
-                                return;
-                            }
-                        } else
-                        if (mode === "complete") {
-                            if (shortlist[info.path + relpath]) {
-                                return;
-                            }
-                        }
-
-                        queued = true;
-
-                        q.push({
-                            serviceId: serviceId,
-                            relpath: relpath,
-                            path: info.path + relpath,
-                            aspect: info.aspect,
-                            size: info.filelist[relpath].size
-                        }, function(err, newSize) {
-                            if (err) {
-                                return deferred.reject(err);
-                            }
-                            if (newSize) {
-                                info.filelist[relpath].size = newSize;
-                            }
-                            // Nothing more to do here.
-                            return;
-                        });
-                    }
-                    check(serviceId, relpath, info);
-                }
-            });
-        }
-        if (!queued) {
-            finalize();
-        }
-        return deferred.promise;
-    }
-
-    return index().then(function(filelists) {
-        var counts = {
-            services: 0,
-            files: 0
-        };
-        for (var serviceId in filelists) {
-            counts.services += 1;
-            filelists[serviceId].forEach(function(info) {
-                counts.files += Object.keys(info.filelist).length;
-            });
-        }
-        if (pio._state["pio.cli.local"].verbose) {
-            console.log(JSON.stringify(filelists, null, 4));
-        }            
-        console.log(("Watching '" + counts.files + "' files for '" + counts.services + "' services ...").yellow);
-
-        // We return a promise that never resolves (unless error) as we want to keep process running.
-        var deferred = Q.defer();
-
-        var checkCompleteInterval = null;
-        function checkComplete() {
-            return checkIfChanged(filelists, "complete").fail(function(err) {
-                clearInterval(checkCompleteInterval);
-                return deferred.reject(err);
-            });
-        }
-        checkCompleteInterval = setInterval(function() {
-            return checkComplete();
-        }, CHECK_FREQUENCY_COMPLETE);
-        checkComplete();
+    function doIndex(pio) {
 
         var checkShortlistInterval = null;
-        function checkShortlist() {
-            return checkIfChanged(filelists, "shortlist").fail(function(err) {
-                clearInterval(checkShortlistInterval);
-                return deferred.reject(err);
-            });
-        }
-        checkShortlistInterval = setInterval(function() {
-            return checkShortlist();
-        }, CHECK_FREQUENCY_SHORTLIST);
-        checkShortlist();
 
-        return deferred.promise;
-    });
+        function index() {
+            var deferred = Q.defer();
+            var filelists = {};    
+            var waitfor = WAITFOR.parallel(function(err) {
+                if (err) return deferred.reject(err);
+                return deferred.resolve(filelists);
+            });
+            function loadFileList(serviceId, path, callback) {
+                return FS.exists(path, function(exists) {
+                    if (!exists) {
+                        return callback(null);
+                    }
+                    return FS.readJson(path, function(err, _filelist) {
+                        if (err) return callback(err);
+
+                        var originalPath = PATH.join(
+                            pio._state["pio.services"].services[serviceId].path,
+                            PATH.basename(PATH.dirname(path))
+                        );
+                        if (!FS.existsSync(originalPath)) {
+                            originalPath = PATH.dirname(originalPath);
+                        }
+
+                        if (!filelists[serviceId]) {
+                            filelists[serviceId] = [];
+                        }
+
+                        filelists[serviceId].push({
+                            path: originalPath,
+                            aspect: PATH.basename(PATH.dirname(path)),
+                            filelist: _filelist
+                        });
+                        return callback(null);
+                    });
+                });
+            }
+            Object.keys(pio._state["pio.services"].services).forEach(function(serviceId) {
+                if (pio._state["pio.services"].services[serviceId].enabled === false) {
+                    return;
+                }
+                waitfor(function(callback) {
+                    return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "source", ".pio.filelist"), function(err) {
+                        if (err) return callback(err);
+                        return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "scripts", ".pio.filelist"), callback);
+                    });
+                });
+            });
+            waitfor();
+            return deferred.promise;
+        }
+
+
+        var shortlist = {};
+        var pending = {};
+
+        var pendingSync = null;
+        function syncPending() {
+            if (pendingSync !== null) {
+                return;
+            }
+            pendingSync = setTimeout(function() {
+                pendingSync = null;
+                var filepaths = pending;
+                pending = {};
+
+                var all = [];
+                var services = {};
+                function uploadFile(task) {
+                    var targetPath = "/opt/services/" + task.serviceId + "/live/" + ((task.aspect) ? "install" : task.aspect) + task.relpath;
+                    return Q.denodeify(FS.lstat)(task.path).then(function(stats) {
+                        if (stats.isSymbolicLink()) {
+                            console.log(("Skip '" + task.path + "'. It is a symlink.").yellow);
+                            return false;
+                        }
+                        if (stats.isFile()) {
+                            return Q.denodeify(FS.readFile)(task.path).then(function(body) {
+                                console.log(("Uploading '" + task.path + "' to '" + targetPath + "' ...").magenta);
+                                return pio._state["pio.deploy"]._call("_putFile", {
+                                    path: targetPath,
+                                    body: body.toString("base64")
+                                }).then(function(response) {
+                                    if (response !== true) {
+                                        throw Error("Error uploading!");
+                                        if (response === null) {
+                                            throw "Cannot connect to VM!";
+                                        }
+                                    }
+                                    console.log(("Uploaded '" + task.path + "' to '" + targetPath + "' done!").green);
+                                    services[task.serviceId] = true;
+                                });
+                            }).fail(function(err) {
+                                console.error("Error uploading file for:", task.serviceId);
+                                throw err;                        
+                            });
+                        } else {
+    //                        console.error(("NOTE: Run `pio deploy " + task.serviceId + "` to deploy new files!").red);
+
+                            console.log(("Triggering full deploy for service '" + task.serviceId + "' as new files were found!").magenta);                        
+                            var servicePio = new PIO(process.env.PIO_SEED_PATH || process.cwd());
+                            return servicePio.ready().then(function() {
+                                return servicePio.ensure(task.serviceId, {}).then(function() {
+                                    return servicePio.deploy();
+                                });
+                            }).then(function() {
+
+                                // Stop our current watcher before starting another one.
+                                clearInterval(checkShortlistInterval);
+
+                                return doIndex(pio);
+                            });
+                        }
+                    });
+                }
+                for (var path in filepaths) {
+                    all.push(uploadFile(filepaths[path]));
+                }
+                return Q.all(all).then(function() {
+                    var all = [];
+                    Object.keys(services).forEach(function(serviceId) {
+                        console.log(("Trigger restart script for service '" + serviceId + "'.").magenta);
+
+                        return pio.ensure(serviceId).then(function() {
+
+                            // TODO: Notify service more gently to see if it can reload first before issuing a full restart.
+                            return pio.restart();
+                        }).fail(function(err) {
+                            console.error("Error ensuring service:", serviceId);
+                            throw err;                        
+                        });
+                    });
+                    return Q.all(all);
+                }).fail(function(err) {
+                    console.error(("Error syncing file: " + err.stack).red);
+                });
+            }, 1 * 1000);
+        }
+
+        function notifyChanged(task) {
+            shortlist[task.path] = true;
+            pending[task.path] = task;
+            syncPending();
+        }
+
+        var _checkIfChanged_running = {};
+        function checkIfChanged(filelists, mode) {
+            if (_checkIfChanged_running[mode]) {
+                return Q.resolve();
+            }
+            _checkIfChanged_running[mode] = true;
+            var deferred = Q.defer();
+            var q = ASYNC.queue(function (task, callback) {
+                return FS.stat(task.path, function(err, stat) {
+                    if (err) {
+                        // For now we ignore missing files as some paths are still wrong.
+                        if (err.code === "ENOENT") {
+                            return callback(null, null);
+                        }
+                        return callback(err);
+                    } else
+                    if (stat.size !== task.size) {
+                        // HACK: This file changes even though no FS changes happened.
+                        // TODO: Need to exclude this file.
+                        if (PATH.basename(task.path) === ".smi.json") {
+                            return callback(null, null);
+                        }
+                        console.log(("File '" + task.path + "' changed (size before: " + task.size + "; size after: " + stat.size + ")").magenta);
+                        notifyChanged(task);
+                        return callback(null, stat.size);
+                    }
+                    return callback(null, null);
+                });
+            }, FS_CONCURRENCY);
+            function finalize() {
+                _checkIfChanged_running[mode] = false;
+                return deferred.resolve();
+            }
+            q.drain = finalize;
+            var path = null;
+            var queued = false;
+            for (var serviceId in filelists) {
+                filelists[serviceId].forEach(function(info) {
+                    for (var relpath in info.filelist) {
+                        function check(serviceId, relpath, info) {
+
+                            if (mode === "shortlist") {
+                                if (!shortlist[info.path + relpath]) {
+                                    return;
+                                }
+                            } else
+                            if (mode === "complete") {
+                                if (shortlist[info.path + relpath]) {
+                                    return;
+                                }
+                            }
+
+                            queued = true;
+
+                            q.push({
+                                serviceId: serviceId,
+                                relpath: relpath,
+                                path: info.path + relpath,
+                                aspect: info.aspect,
+                                size: info.filelist[relpath].size
+                            }, function(err, newSize) {
+                                if (err) {
+                                    return deferred.reject(err);
+                                }
+                                if (newSize) {
+                                    info.filelist[relpath].size = newSize;
+                                }
+                                // Nothing more to do here.
+                                return;
+                            });
+                        }
+                        check(serviceId, relpath, info);
+                    }
+                });
+            }
+            if (!queued) {
+                finalize();
+            }
+            return deferred.promise;
+        }
+
+        return index().then(function(filelists) {
+            var counts = {
+                services: 0,
+                files: 0
+            };
+            for (var serviceId in filelists) {
+                counts.services += 1;
+                filelists[serviceId].forEach(function(info) {
+                    counts.files += Object.keys(info.filelist).length;
+                });
+            }
+            if (pio._state["pio.cli.local"].verbose) {
+                console.log(JSON.stringify(filelists, null, 4));
+            }            
+            console.log(("Watching '" + counts.files + "' files for '" + counts.services + "' services ...").yellow);
+
+            // We return a promise that never resolves (unless error) as we want to keep process running.
+            var deferred = Q.defer();
+
+            var checkCompleteInterval = null;
+            function checkComplete() {
+                return checkIfChanged(filelists, "complete").fail(function(err) {
+                    clearInterval(checkCompleteInterval);
+                    return deferred.reject(err);
+                });
+            }
+            checkCompleteInterval = setInterval(function() {
+                return checkComplete();
+            }, CHECK_FREQUENCY_COMPLETE);
+            checkComplete();
+
+            function checkShortlist() {
+                return checkIfChanged(filelists, "shortlist").fail(function(err) {
+                    clearInterval(checkShortlistInterval);
+                    return deferred.reject(err);
+                });
+            }
+            checkShortlistInterval = setInterval(function() {
+                return checkShortlist();
+            }, CHECK_FREQUENCY_SHORTLIST);
+            checkShortlist();
+
+            return deferred.promise;
+        });
+    }
+
+    return doIndex(pio);
 }
 
 
