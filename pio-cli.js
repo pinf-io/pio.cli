@@ -474,6 +474,7 @@ if (require.main === module) {
                 program
                     .command("test [service-selector]")
                     .option("--local", "Run local tests instead of calling instance.")
+                    .option("--cycle [delay]", "Run tests again after specified delay (in seconds).")
                     .description("Test a service")
                     .action(function(selector, options) {
                         acted = true;
@@ -482,7 +483,8 @@ if (require.main === module) {
                         }
                         return ensure(program, selector).then(function() {
                             return pio.test({
-                                local: options.local || false
+                                local: options.local || false,
+                                cycle: (options.cycle && (options.cycle === true ? 3 : parseInt(options.cycle) || 3)) || false
                             }).then(function(status) {
                                 console.log(JSON.stringify(status, null, 4));
                                 return;
