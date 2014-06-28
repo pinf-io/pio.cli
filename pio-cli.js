@@ -90,7 +90,6 @@ function spin(pio) {
                 return;
             }
             pendingSync = setTimeout(function() {
-                pendingSync = null;
                 var filepaths = pending;
                 pending = {};
 
@@ -162,6 +161,8 @@ function spin(pio) {
                     return Q.all(all);
                 }).fail(function(err) {
                     console.error(("Error syncing file: " + err.stack).red);
+                }).then(function() {
+                    pendingSync = null;
                 });
             }, 1 * 1000);
         }
