@@ -9,4 +9,4 @@ while [ -h "$SOURCE" ]; do
 done
 BASE_PATH="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
-node "$BASE_PATH/pio-cli.js" $@
+node $BASE_PATH/pio-provision-profile.js $@
