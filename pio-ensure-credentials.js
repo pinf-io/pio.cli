@@ -25,13 +25,13 @@ var providers = {
                 "type": "password",
                 "question": "Enter the email address for the Digital Ocean account"
             },
-            "DIGIO_CLIENT_ID": {
+            "DIGIO_TOKEN_NAME": {
                 "type": "password",
-                "question": "Enter your Digital Ocean Client ID"
+                "question": "Enter the name of your Digital Ocean Personal Access Token"
             },
-            "DIGIO_API_KEY": {
+            "DIGIO_TOKEN": {
                 "type": "password",
-                "question": "Enter your Digital Ocean API Key"
+                "question": "Enter your Digital Ocean Personal Access Token"
             }
         }
     },
