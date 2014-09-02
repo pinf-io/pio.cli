@@ -390,11 +390,14 @@ if (require.main === module) {
 
                 program
                     .command("deploy [service-selector]")
+                    .option("--no-build-cache", "Don't download assets from build cache")
                     .description("Deploy a service")
-                    .action(function(selector) {
+                    .action(function(selector, options) {
                         acted = true;
                         return ensure(program, selector).then(function() {
-                            return pio.deploy();
+                            return pio.deploy({
+                                buildCache: options.buildCache
+                            });
                         }).then(function() {
                             return callback(null);
                         }).fail(callback);
