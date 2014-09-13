@@ -174,20 +174,15 @@ function main (callback) {
                 });
             }
 
-
-            return ensureProvider(function(err, _lines, _profileDescriptor) {
-                if (err) return callback(err);
-
-                if (!_lines || !_profileDescriptor) {
-                    console.log("Skip writing activation file.");
-                    return callback(null);
-                }
+            function ensurePIOAndWriteFile(_lines, _profileDescriptor, callback) {
 
                 var lines = [
                     "#!/bin/bash -e",
                     ""
                 ];
-                lines = lines.concat(_lines);
+                if (_lines) {
+                    lines = lines.concat(_lines);
+                }
                 lines = lines.concat([
                     "",
                     "# pio credentials"
@@ -214,12 +209,20 @@ function main (callback) {
                 if (FS.existsSync(profileFilePath)) {
                     profileDescriptor = JSON.parse(FS.readFileSync(profileFilePath));
                 }
-                profileDescriptor = DEEPMERGE(profileDescriptor, _profileDescriptor);
+                if (_profileDescriptor) {
+                    profileDescriptor = DEEPMERGE(profileDescriptor, _profileDescriptor);
+                }
 
                 console.log(("Writing profile file to: " + profileFilePath).magenta);
                 FS.outputFileSync(profileFilePath, JSON.stringify(profileDescriptor, null, 4));
 
-                return callback(null);                
+                return callback(null);
+            }
+
+            return ensureProvider(function(err, _lines, _profileDescriptor) {
+                if (err) return callback(err);
+            
+                return ensurePIOAndWriteFile(_lines, _profileDescriptor, callback);
             });
         }
 
