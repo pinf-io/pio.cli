@@ -27,14 +27,20 @@ var profileFilePath = PATH.join(packageRootPath + ".profile.json");
 function main (callback) {
 
     var files = [
-        activationFilePath,
-        profileFilePath
+        {
+            name: "profile.json",
+            path: profileFilePath
+        },
+        {
+            name: "activate.sh",
+            path: activationFilePath
+        }
     ];
 
     function countFiles (callback) {
         var count = 0;
-        files.forEach(function (file) {
-            if (FS.existsSync(file)) {
+        files.forEach(function (fileinfo) {
+            if (FS.existsSync(fileinfo.path)) {
                 count += 1;
             }
         });
@@ -66,11 +72,13 @@ function main (callback) {
         }, function(err, packageDescriptor) {
             if (err) return callback(err);
 
-            var repositoryUri = packageDescriptor.config.pio.profileRegistryUri + "/" + process.env.PIO_PROFILE_KEY;
+            var repositoryUri = (process.env.PIO_PROFILE_ENDPOINT || packageDescriptor.config.pio.profileRegistryUri) + "/" + process.env.PIO_PROFILE_KEY;
 
-            function downloadFile(file, callback) {
+            function downloadFile(fileinfo, callback) {
 
-                var url = repositoryUri + "/" + PATH.basename(file);
+                var file = fileinfo.path;
+
+                var url = repositoryUri + "/" + fileinfo.name;
 
                 console.log("Trying to download file: " + url);
 
@@ -89,7 +97,7 @@ function main (callback) {
                     var decrypted = decrypt.update(new Buffer(body.join(":"), 'base64').toString('binary'), 'binary', 'utf8');
                     decrypted += decrypt.final('utf8');
 
-                    var cachePath = PATH.join(packageRootPath, ".pio.cache/pio.profile", PATH.basename(file) + "~mtime");
+                    var cachePath = PATH.join(packageRootPath, ".pio.cache/pio.profile", fileinfo.name + "~mtime");
 
                     FS.outputFileSync(file, decrypted);
                     FS.outputFileSync(cachePath, Math.ceil(FS.statSync(file).mtime.getTime()/1000));
@@ -105,8 +113,8 @@ function main (callback) {
                 console.log(("Profile downloaded! Run 'source bin/activate.sh' next!").magenta);
                 return callback(null);
             });
-            files.forEach(function (file) {
-                return waitfor(file, downloadFile);
+            files.forEach(function (fileinfo) {
+                return waitfor(fileinfo, downloadFile);
             });
             return waitfor();
         });

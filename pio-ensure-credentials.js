@@ -177,8 +177,17 @@ function main (callback) {
             function ensurePIOAndWriteFile(_lines, _profileDescriptor, callback) {
 
                 var lines = [
-                    "#!/bin/bash -e",
-                    ""
+                    '#!/bin/bash -e',
+                    '',
+                    '# @credit http://stackoverflow.com/a/246128/330439',
+                    'SOURCE="${BASH_SOURCE[0]}"',
+                    'while [ -h "$SOURCE" ]; do',
+                    '  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"',
+                    '  SOURCE="$(readlink "$SOURCE")"',
+                    '  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"',
+                    'done',
+                    '_BASE_PATH="$( cd -P "$( dirname "$SOURCE" )" && pwd )"',
+                    ''
                 ];
                 if (_lines) {
                     lines = lines.concat(_lines);
@@ -198,7 +207,7 @@ function main (callback) {
                 lines = lines.concat([
                     "",
                     "# pio config",
-                    'export PIO_PROFILE_PATH="' + profileFilePath + '"'
+                    'export PIO_PROFILE_PATH="$_BASE_PATH/' + PATH.basename(profileFilePath) + '"'
                 ]);
 
                 console.log(("Writing activation file to: " + activationFilePath).magenta);
