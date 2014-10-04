@@ -409,9 +409,6 @@ if (require.main === module) {
                     .description("Useful information")
                     .action(function(selector, options) {
                         acted = true;
-                        if (!pio._config.config["pio.vm"].ip) {
-                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
-                        }
                         return ensure(program, selector).then(function() {
                             return pio.info().then(function(info) {
                                 if (options.variable) {
@@ -460,7 +457,7 @@ if (require.main === module) {
                 program
                     .command("status [service-selector]")
                     .description("Get the status of a service")
-                    .action(function(selector) {
+                    .action(function(selector, options) {
                         acted = true;
                         if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
