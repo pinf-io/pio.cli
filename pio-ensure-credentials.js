@@ -6,6 +6,7 @@ const INQUIRER = require("inquirer");
 const UUID = require("uuid");
 const SMI = require("smi.cli");
 const DEEPMERGE = require("deepmerge");
+const PIO_PROVISION_PROFILE = require("./pio-provision-profile.js");
 
 
 COLORS.setTheme({
@@ -18,6 +19,7 @@ var activationFilePath = PATH.join(packageRootPath + ".activate.sh");
 var profileFilePath = PATH.join(packageRootPath + ".profile.json");
 var providers = {
     "digitalocean": {
+        "id": "digitalocean",
         "label": "Digital Ocean",
         "url": "https://digitalocean.com/",
         "variables": {
@@ -36,6 +38,7 @@ var providers = {
         }
     },
     "aws": {
+        "id": "aws",
         "label": "Amazon Web Services",
         "url": "http://aws.amazon.com/",
         "variables": {
@@ -50,6 +53,21 @@ var providers = {
             "AWS_SECRET_KEY": {
                 "type": "password",
                 "question": "Enter your AWS Secret Key"
+            }
+        }
+    },
+    "pio": {
+        "id": "pio",
+        "label": "PIO Profile",
+        "url": "http://pio.pinf.io/",
+        "variables": {
+            "PIO_PROFILE_KEY": {
+                "type": "password",
+                "question": "Enter the PIO_PROFILE_KEY"
+            },
+            "PIO_PROFILE_SECRET": {
+                "type": "password",
+                "question": "Enter the PIO_PROFILE_SECRET"
             }
         }
     }
@@ -90,6 +108,20 @@ function main (callback) {
                     };
                 });
                 INQUIRER.prompt(prompts, function(answers) {
+
+                    if (provider.id === "pio") {
+                        [
+                            "PIO_PROFILE_KEY",
+                            "PIO_PROFILE_SECRET"
+                        ].forEach(function (name) {
+                            process.env[name] = answers[name];
+                        });
+                        return PIO_PROVISION_PROFILE.provision(function (err) {
+                            if (err) return callback(err);
+                            return callback(null, null);
+                        });
+                    }
+
                     return callback(null, [
                         '# ' + provider.label + " - " + provider.url
                     ].concat(Object.keys(answers).map(function(name) {
@@ -104,12 +136,19 @@ function main (callback) {
 
 
             function ensureProvider(callback) {
+                var provider = null;
+                if (process.env.PIO_PROFILE_PROVIDER) {
+                    provider = process.env.PIO_PROFILE_PROVIDER;
+                } else
                 if (
                     packageDescriptor &&
                     packageDescriptor.config &&
                     packageDescriptor.config["pio.vm"] &&
                     packageDescriptor.config["pio.vm"].adapter
                 ) {
+                    provider = packageDescriptor.config["pio.vm"].adapter;
+                }
+                if (provider) {
                     // Let user enter credentials for pre-selected provider.
 
                     console.log("");
@@ -117,8 +156,12 @@ function main (callback) {
                     console.log(("WE ACCEPT NO LIABILITY FOR DAMAGE TO YOUR EXISTING RESOURCES RESULTING FROM THE USE OF OUR TOOLING!").magenta);
                     console.log("");
 
-                    return configureProvider(providers[packageDescriptor.config["pio.vm"].adapter], function(err, _lines) {
+                    return configureProvider(providers[provider], function(err, _lines) {
                         if (err) return callback(err);
+
+                        if (!_lines) {
+                            return callback(null, null, null);
+                        }
 
                         return callback(null, _lines, {
                             "config": {
@@ -162,6 +205,10 @@ function main (callback) {
                     }
                     return configureProvider(providers[choicesMap[answers.provider]], function(err, _lines) {
                         if (err) return callback(err);
+
+                        if (!_lines) {
+                            return callback(null, null, null);
+                        }
 
                         return callback(null, _lines, {
                             "config": {
@@ -230,6 +277,10 @@ function main (callback) {
 
             return ensureProvider(function(err, _lines, _profileDescriptor) {
                 if (err) return callback(err);
+
+                if (!_lines && !_profileDescriptor) {
+                    return callback(null);
+                }
             
                 return ensurePIOAndWriteFile(_lines, _profileDescriptor, callback);
             });

@@ -22,9 +22,10 @@ var packageRootPath = process.cwd();
 var packageDescriptorFilePath = PATH.join(packageRootPath, "package.json");
 var activationFilePath = PATH.join(packageRootPath + ".activate.sh");
 var profileFilePath = PATH.join(packageRootPath + ".profile.json");
+var sshKeyBasePath = PATH.join(process.env.HOME, ".ssh");
 
 
-function main (callback) {
+exports.provision = function (callback) {
 
     var files = [
         {
@@ -34,6 +35,10 @@ function main (callback) {
         {
             name: "activate.sh",
             path: activationFilePath
+        },
+        {
+            name: "ssh.key",
+            path: PATH.join(sshKeyBasePath, "{{config.pio.hostname}}")
         }
     ];
 
@@ -74,13 +79,22 @@ function main (callback) {
 
             var repositoryUri = (process.env.PIO_PROFILE_ENDPOINT || packageDescriptor.config.pio.profileRegistryUri) + "/" + process.env.PIO_PROFILE_KEY;
 
+            var profileConfig = null;
+
             function downloadFile(fileinfo, callback) {
 
                 var file = fileinfo.path;
 
+                if (fileinfo.name === "ssh.key") {
+                    if (!profileConfig.config.pio.hostname) {
+                        return callback(new Error("'profileConfig.config.pio.hostname' not set!"));
+                    }
+                    file = file.replace(/\{\{config\.pio\.hostname\}\}/g, profileConfig.config.pio.hostname);
+                }
+
                 var url = repositoryUri + "/" + fileinfo.name;
 
-                console.log("Trying to download file: " + url);
+                console.log("Trying to download '" + url + "' to '" + file + "'");
 
                 return REQUEST(url, function(err, response, body) {
                     if (err) {
@@ -104,11 +118,18 @@ function main (callback) {
 
                     console.log("Wrote file to: " + file);
 
+                    if (fileinfo.name === "profile.json") {
+                        profileConfig = JSON.parse(decrypted);
+                    } else
+                    if (fileinfo.name === "ssh.key") {
+                        FS.chmodSync(file, 0600);
+                    }
+
                     return callback(null);
                 });
             }
 
-            var waitfor = WAITFOR.parallel(function(err) {
+            var waitfor = WAITFOR.serial(function(err) {
                 if (err) return callback(err);
                 console.log(("Profile downloaded! Run 'source bin/activate.sh' next!").magenta);
                 return callback(null);
@@ -123,7 +144,7 @@ function main (callback) {
 
 
 if (require.main === module) {
-    main(function(err) {
+    exports.provision(function(err) {
         if (err) {
             if (typeof err === "string") {
                 console.error((""+err).red);
