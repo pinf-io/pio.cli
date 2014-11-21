@@ -541,7 +541,7 @@ if (require.main === module) {
                     });
 
                 program
-                    .command("restart <service-selector>")
+                    .command("restart [service-selector]")
                     .description("Restart a service")
                     .action(function(selector) {
                         acted = true;
