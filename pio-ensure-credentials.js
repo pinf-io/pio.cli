@@ -107,8 +107,15 @@ function main (callback) {
                         choices: choices
                     };
                 });
-                INQUIRER.prompt(prompts, function(answers) {
-
+                var answers = {};
+                prompts = prompts.filter(function (prompt) {
+                    if (typeof process.env[prompt.name] !== "undefined") {
+                        answers[prompt.name] = process.env[prompt.name];
+                        return false;
+                    }
+                    return true;
+                });
+                function finalize (callback) {
                     if (provider.id === "pio") {
                         [
                             "PIO_PROFILE_KEY",
@@ -127,6 +134,15 @@ function main (callback) {
                     ].concat(Object.keys(answers).map(function(name) {
                         return 'export ' + name + '="' + answers[name] + '"';
                     })));
+                }
+                if (prompts.length === 0) {
+                    return finalize(callback);
+                }
+                INQUIRER.prompt(prompts, function(_answers) {
+                    for (var name in _answers) {
+                        answers[name] = _answers[name];
+                    }
+                    return finalize(callback);
                 });
             }
 
