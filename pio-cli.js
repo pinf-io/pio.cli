@@ -69,6 +69,10 @@ function spin(pio) {
                 if (pio._state["pio.services"].services[serviceId].enabled === false) {
                     return;
                 }
+                if (
+                    pio._state['pio.cli.local'].serviceSelector &&
+                    serviceId !== pio._state['pio.cli.local'].serviceSelector
+                ) return;
                 waitfor(function(callback) {
                     return loadFileList(serviceId, PATH.join(pio._configPath, "../.pio.sync", serviceId, "source", ".pio.filelist"), function(err) {
                         if (err) return callback(err);
@@ -556,14 +560,14 @@ if (require.main === module) {
                     });
 
                 program
-                    .command("spin")
+                    .command("spin [service-selector]")
                     .description("Watch source code, sync and reload service on every change")
-                    .action(function() {
+                    .action(function(selector) {
                         acted = true;
                         if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
-                        return ensure(program, null).then(function() {
+                        return ensure(program, selector).then(function() {
                             return spin(pio);
                         }).then(function() {
                             return callback(null);
