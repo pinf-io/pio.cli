@@ -89,7 +89,9 @@ exports.provision = function (callback) {
                             return callback(err);
                         }
                         if (response.statusCode !== 200) {
-                            return callback("[pio-provision-profile] No profile file found online!");
+                            console.log("response.headers", response.headers);
+                            console.log("body", body);
+                            return callback("[pio-provision-profile] No profile file found online! Go status code: " + response.statusCode);
                         }
                         var secretHash = CRYPTO.createHash("sha256");
                         secretHash.update(process.env.PIO_PROFILE_KEY + ":" + process.env.PIO_PROFILE_SECRET);

@@ -61,6 +61,10 @@ var providers = {
         "label": "PIO Profile",
         "url": "http://pio.pinf.io/",
         "variables": {
+            "PIO_PROFILE_ENDPOINT": {
+                "type": "input",
+                "question": "Enter the PIO_PROFILE_ENDPOINT"
+            },
             "PIO_PROFILE_KEY": {
                 "type": "password",
                 "question": "Enter the PIO_PROFILE_KEY"
@@ -118,6 +122,7 @@ function main (callback) {
                 function finalize (callback) {
                     if (provider.id === "pio") {
                         [
+                            "PIO_PROFILE_ENDPOINT",
                             "PIO_PROFILE_KEY",
                             "PIO_PROFILE_SECRET"
                         ].forEach(function (name) {
