@@ -530,6 +530,24 @@ if (require.main === module) {
                     });
 
                 program
+                    .command("run <service-selector>")
+                    .option("--cycle [delay]", "Run tests again after specified delay (in seconds).")
+                    .description("Run a service locally and stay connected to it")
+                    .action(function(selector, options) {
+                        acted = true;
+                        if (!pio._config.config["pio.vm"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.run({
+                                cycle: (options.cycle && (options.cycle === true ? 3 : parseInt(options.cycle) || 3)) || false
+                            });
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
                     .command("stop <service-selector>")
                     .description("Stop a service")
                     .action(function(selector) {
