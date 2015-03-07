@@ -501,14 +501,18 @@ if (require.main === module) {
 
                 program
                     .command("publish [service-selector]")
+                    .option("--local", "Publish locally only.")
                     .description("Publish a service")
-                    .action(function(selector) {
+                    .action(function(selector, options) {
                         acted = true;
                         if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
                         return ensure(program, selector).then(function() {
-                            return pio.publish();
+                            return pio.publish({
+                                local: options.local || false,
+                                args: program.args || []
+                            });
                         }).then(function() {
                             return callback(null);
                         }).fail(callback);
@@ -531,6 +535,7 @@ if (require.main === module) {
 
                 program
                     .command("run <service-selector>")
+                    .option("--open", "Open browser after starting and attaching to process")
                     .option("--cycle [delay]", "Run tests again after specified delay (in seconds).")
                     .description("Run a service locally and stay connected to it")
                     .action(function(selector, options) {
@@ -540,6 +545,7 @@ if (require.main === module) {
                         }
                         return ensure(program, selector).then(function() {
                             return pio.run({
+                                open: options.open || false,
                                 cycle: (options.cycle && (options.cycle === true ? 3 : parseInt(options.cycle) || 3)) || false
                             });
                         }).then(function() {
