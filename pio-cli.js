@@ -500,6 +500,25 @@ if (require.main === module) {
                     });
 
                 program
+                    .command("bundle [service-selector]")
+                    .option("--local", "Run local bundle instead of calling instance.")
+                    .description("Bundle a service ready for publishing")
+                    .action(function(selector, options) {
+                        acted = true;
+                        if (!pio._config.config["pio.vm"].ip) {
+                            return callback("Instance not running! Create instance by calling 'pio deploy'.");
+                        }
+                        return ensure(program, selector).then(function() {
+                            return pio.bundle({
+                                local: options.local || false,
+                                args: program.args || []
+                            });
+                        }).then(function() {
+                            return callback(null);
+                        }).fail(callback);
+                    });
+
+                program
                     .command("publish [service-selector]")
                     .option("--local", "Publish locally only.")
                     .description("Publish a service")
@@ -535,6 +554,8 @@ if (require.main === module) {
 
                 program
                     .command("run <service-selector>")
+                    .option("--local", "Run locally instead of calling instance.")
+                    .option("--dev", "Run in DEVELOPMENT mode which enables debugging and loads original sources just in time")
                     .option("--open", "Open browser after starting and attaching to process")
                     .option("--cycle [delay]", "Run tests again after specified delay (in seconds).")
                     .description("Run a service locally and stay connected to it")
@@ -543,8 +564,20 @@ if (require.main === module) {
                         if (!pio._config.config["pio.vm"].ip) {
                             return callback("Instance not running! Create instance by calling 'pio deploy'.");
                         }
+                        var deeperArgs = null;
+                        program.rawArgs.forEach(function (arg) {
+                            if (deeperArgs === null && arg === "--") {
+                                deeperArgs = [];
+                            } else
+                            if (Array.isArray(deeperArgs)) {
+                                deeperArgs.push(arg);
+                            }
+                        });
                         return ensure(program, selector).then(function() {
                             return pio.run({
+                                local: options.local || false,
+                                dev: options.dev || false,
+                                deeperArgs: deeperArgs || [],
                                 open: options.open || false,
                                 cycle: (options.cycle && (options.cycle === true ? 3 : parseInt(options.cycle) || 3)) || false
                             });
