@@ -1,6 +1,6 @@
 {
   "name": "pio.cli",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "CLI client for PINF.io service",
   "pm": "npm",
   "main": "pio-cli.js",
